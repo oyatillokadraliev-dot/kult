@@ -5,667 +5,348 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>КУЛЬТ — женский спортивный клуб</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import {
+    getFirestore, collection, doc, setDoc, getDoc, getDocs,
+    addDoc, deleteDoc, query, where, serverTimestamp, updateDoc
+  } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA9AByymeqj8RFy1dhitLPpifoXTf8wLF8",
+    authDomain: "fiz-cult.firebaseapp.com",
+    projectId: "fiz-cult",
+    storageBucket: "fiz-cult.firebasestorage.app",
+    messagingSenderId: "451011766706",
+    appId: "1:451011766706:web:2f58d16b5edfc620409cab",
+    measurementId: "G-81MXX3S99H"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  window._db = db;
+  window._fb = { collection, doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, query, where, serverTimestamp, updateDoc };
+  window._firebaseReady = true;
+  document.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#F8F6F3;
-  --surface:#EDE8E1;
-  --ink:#1C1917;
-  --ink-muted:#78716C;
-  --forest:#2D3B2E;
-  --gold:#C9A96E;
-  --gold-light:#E8D5B0;
-  --white:#FFFFFF;
+  --bg:#F8F6F3;--surface:#EDE8E1;--ink:#1C1917;--ink-muted:#78716C;
+  --forest:#2D3B2E;--gold:#C9A96E;--gold-light:#E8D5B0;--white:#FFFFFF;
   --border:rgba(28,25,23,0.1);
   --shadow-card:0 2px 8px rgba(28,25,23,0.06),0 12px 40px rgba(28,25,23,0.08);
   --shadow-hover:0 4px 16px rgba(28,25,23,0.08),0 24px 64px rgba(28,25,23,0.12);
-  --radius:16px;
-  --radius-sm:10px;
+  --radius:16px;--radius-sm:10px;
 }
 html{scroll-behavior:smooth}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font-weight:300;line-height:1.6;-webkit-font-smoothing:antialiased}
-
-/* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--gold);border-radius:2px}
 
-/* ── NAV ── */
-#nav{
-  position:fixed;top:0;left:0;right:0;z-index:200;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 48px;height:68px;
-  background:rgba(248,246,243,0.88);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border);
-  transition:box-shadow .3s;
-}
+/* NAV */
+#nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:0 48px;height:68px;background:rgba(248,246,243,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);transition:box-shadow .3s}
 #nav.scrolled{box-shadow:0 1px 32px rgba(28,25,23,0.08)}
-.nav-logo{
-  font-family:'Playfair Display',serif;
-  font-size:20px;font-weight:700;letter-spacing:.05em;
-  color:var(--ink);text-decoration:none;cursor:pointer;
-  transition:color .2s;
-}
+.nav-logo{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;letter-spacing:.05em;color:var(--ink);cursor:pointer;transition:color .2s}
 .nav-logo:hover{color:var(--forest)}
 .nav-links{display:flex;gap:32px;list-style:none}
-.nav-links a{
-  font-size:14px;font-weight:400;color:var(--ink-muted);
-  text-decoration:none;letter-spacing:.01em;
-  transition:color .2s;cursor:pointer;
-}
+.nav-links a{font-size:14px;font-weight:400;color:var(--ink-muted);cursor:pointer;transition:color .2s}
 .nav-links a:hover{color:var(--ink)}
 .nav-actions{display:flex;gap:10px;align-items:center}
-.btn-outline{
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
-  color:var(--ink);background:transparent;
-  border:1.5px solid rgba(28,25,23,0.2);
-  padding:9px 22px;border-radius:100px;cursor:pointer;
-  transition:all .25s;white-space:nowrap;
-}
+.btn-outline{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--ink);background:transparent;border:1.5px solid rgba(28,25,23,0.2);padding:9px 22px;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap}
 .btn-outline:hover{border-color:var(--ink);background:var(--ink);color:var(--white)}
-.btn-primary{
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
-  color:var(--white);background:var(--forest);
-  border:1.5px solid var(--forest);
-  padding:9px 22px;border-radius:100px;cursor:pointer;
-  transition:all .25s;white-space:nowrap;
-}
+.btn-primary{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--white);background:var(--forest);border:1.5px solid var(--forest);padding:9px 22px;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap}
 .btn-primary:hover{background:var(--ink);border-color:var(--ink);transform:translateY(-1px);box-shadow:0 8px 24px rgba(28,25,23,0.2)}
 .burger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
 .burger span{display:block;width:22px;height:1.5px;background:var(--ink);transition:all .3s;border-radius:1px}
 
-/* ── HERO ── */
-#hero{
-  min-height:100vh;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  background:var(--forest);position:relative;overflow:hidden;
-  padding:80px 24px 60px;
-}
-.hero-orb{
-  position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none;
-}
+/* MOBILE MENU */
+.mobile-menu{display:none;position:fixed;top:68px;left:0;right:0;z-index:199;background:var(--white);border-bottom:1px solid var(--border);padding:20px 24px 28px;box-shadow:0 12px 40px rgba(28,25,23,.1);flex-direction:column;gap:4px}
+.mobile-menu.open{display:flex}
+.mobile-menu a,.mobile-menu button{font-family:'DM Sans',sans-serif;font-size:16px;font-weight:400;color:var(--ink);text-decoration:none;background:none;border:none;cursor:pointer;text-align:left;padding:13px 0;border-bottom:1px solid var(--border);transition:color .2s;display:flex;align-items:center;gap:10px}
+.mobile-menu a:last-child,.mobile-menu button:last-child{border-bottom:none}
+.mobile-menu a:hover,.mobile-menu button:hover{color:var(--forest)}
+.mm-icon{width:18px;height:18px;flex-shrink:0;opacity:.5}
+.mm-divider{height:1px;background:var(--border);margin:4px 0}
+.mm-section-label{font-size:10px;font-weight:500;letter-spacing:.15em;color:var(--ink-muted);padding:10px 0 4px;border:none!important;cursor:default!important;text-transform:uppercase}
+.mm-section-label:hover{color:var(--ink-muted)!important}
+
+/* HERO */
+#hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--forest);position:relative;overflow:hidden;padding:80px 24px 60px}
+.hero-orb{position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none}
 .hero-orb-1{width:500px;height:500px;background:rgba(201,169,110,0.18);top:-100px;right:-100px}
 .hero-orb-2{width:400px;height:400px;background:rgba(248,246,243,0.06);bottom:-80px;left:-80px}
 .hero-inner{position:relative;z-index:2;text-align:center;max-width:720px}
-.hero-tag{
-  display:inline-block;
-  font-size:11px;font-weight:500;letter-spacing:.18em;
-  color:var(--gold);
-  border:1px solid rgba(201,169,110,0.35);
-  padding:6px 18px;border-radius:100px;
-  margin-bottom:40px;
-  opacity:0;animation:fadeUp .8s .2s forwards;
-  text-transform:uppercase;
-}
-.hero-title{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(80px,16vw,160px);
-  font-weight:700;line-height:.9;
-  color:var(--white);
-  letter-spacing:-.02em;
-  margin-bottom:32px;
-}
-.hero-title span{
-  display:inline-block;
-  opacity:0;transform:translateY(40px);
-  animation:letterUp .6s forwards;
-}
+.hero-tag{display:inline-block;font-size:11px;font-weight:500;letter-spacing:.18em;color:var(--gold);border:1px solid rgba(201,169,110,0.35);padding:6px 18px;border-radius:100px;margin-bottom:40px;opacity:0;animation:fadeUp .8s .2s forwards;text-transform:uppercase}
+.hero-title{font-family:'Playfair Display',serif;font-size:clamp(80px,16vw,160px);font-weight:700;line-height:.9;color:var(--white);letter-spacing:-.02em;margin-bottom:32px}
+.hero-title span{display:inline-block;opacity:0;transform:translateY(40px);animation:letterUp .6s forwards}
 .hero-title span:nth-child(1){animation-delay:.4s}
 .hero-title span:nth-child(2){animation-delay:.5s}
 .hero-title span:nth-child(3){animation-delay:.6s}
 .hero-title span:nth-child(4){animation-delay:.7s}
 .hero-title span:nth-child(5){animation-delay:.8s}
-.hero-sub{
-  font-size:16px;font-weight:300;
-  color:rgba(248,246,243,.55);
-  line-height:1.65;max-width:400px;margin:0 auto 48px;
-  opacity:0;animation:fadeUp .8s 1s forwards;
-}
-.hero-cta-row{
-  display:flex;gap:12px;justify-content:center;flex-wrap:wrap;
-  opacity:0;animation:fadeUp .8s 1.2s forwards;
-}
-.hero-btn-main{
-  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;
-  color:var(--forest);background:var(--white);
-  border:none;padding:16px 40px;border-radius:100px;cursor:pointer;
-  transition:all .3s;letter-spacing:.01em;
-}
+.hero-sub{font-size:16px;font-weight:300;color:rgba(248,246,243,.55);line-height:1.65;max-width:400px;margin:0 auto 48px;opacity:0;animation:fadeUp .8s 1s forwards}
+.hero-cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;opacity:0;animation:fadeUp .8s 1.2s forwards}
+.hero-btn-main{font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--forest);background:var(--white);border:none;padding:16px 40px;border-radius:100px;cursor:pointer;transition:all .3s}
 .hero-btn-main:hover{background:var(--gold-light);transform:translateY(-2px);box-shadow:0 12px 40px rgba(248,246,243,.2)}
-.hero-btn-ghost{
-  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:400;
-  color:rgba(248,246,243,.7);background:transparent;
-  border:1.5px solid rgba(248,246,243,.2);
-  padding:16px 36px;border-radius:100px;cursor:pointer;
-  transition:all .3s;letter-spacing:.01em;
-}
+.hero-btn-ghost{font-family:'DM Sans',sans-serif;font-size:14px;font-weight:400;color:rgba(248,246,243,.7);background:transparent;border:1.5px solid rgba(248,246,243,.2);padding:16px 36px;border-radius:100px;cursor:pointer;transition:all .3s}
 .hero-btn-ghost:hover{border-color:rgba(248,246,243,.5);color:var(--white)}
-.hero-scroll{
-  position:absolute;bottom:36px;left:50%;transform:translateX(-50%);
-  display:flex;flex-direction:column;align-items:center;gap:10px;
-  opacity:0;animation:fadeIn 1s 1.8s forwards;
-}
+
+/* HERO BADGES — новая статистика */
+.hero-badges{display:flex;flex-direction:column;gap:10px;margin-top:56px;opacity:0;animation:fadeUp .8s 1.4s forwards;max-width:480px;width:100%}
+.hero-badge{display:flex;align-items:center;gap:14px;background:rgba(248,246,243,.07);border:1px solid rgba(248,246,243,.12);border-radius:100px;padding:12px 22px;backdrop-filter:blur(4px)}
+.hero-badge-icon{width:32px;height:32px;border-radius:50%;background:rgba(201,169,110,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hero-badge-text{font-size:14px;font-weight:400;color:rgba(248,246,243,.85);text-align:left}
+.hero-badge-text b{font-weight:500;color:var(--white)}
+
+.hero-scroll{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:10px;opacity:0;animation:fadeIn 1s 1.8s forwards}
 .hero-scroll-text{font-size:10px;font-weight:500;letter-spacing:.2em;color:rgba(248,246,243,.3);text-transform:uppercase}
 .hero-scroll-track{width:1px;height:48px;background:rgba(248,246,243,.15);position:relative;overflow:hidden}
-.hero-scroll-dot{
-  position:absolute;top:-6px;left:0;width:1px;height:20px;
-  background:var(--gold);
-  animation:scrollDot 2s ease-in-out infinite;
-}
-.hero-stats{
-  display:flex;gap:48px;justify-content:center;
-  margin-top:64px;
-  opacity:0;animation:fadeUp .8s 1.4s forwards;
-}
-.hero-stat{}
-.hero-stat-num{
-  font-family:'Playfair Display',serif;
-  font-size:32px;font-weight:500;color:var(--white);
-  line-height:1;margin-bottom:4px;
-}
-.hero-stat-label{font-size:11px;font-weight:400;color:rgba(248,246,243,.45);letter-spacing:.08em}
+.hero-scroll-dot{position:absolute;top:-6px;left:0;width:1px;height:20px;background:var(--gold);animation:scrollDot 2s ease-in-out infinite}
 
-/* ── SECTION WRAPPER ── */
+/* SECTIONS */
 .section{padding:96px 48px}
-.section-sm{padding:72px 48px}
 .container{max-width:1160px;margin:0 auto}
 .section-heading{margin-bottom:56px}
-.section-heading h2{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(36px,5vw,52px);font-weight:500;
-  color:var(--ink);line-height:1.1;margin-bottom:12px;
-}
+.section-heading h2{font-family:'Playfair Display',serif;font-size:clamp(36px,5vw,52px);font-weight:500;color:var(--ink);line-height:1.1;margin-bottom:12px}
 .section-heading p{font-size:16px;font-weight:300;color:var(--ink-muted);max-width:500px;line-height:1.65}
 .section-heading.center{text-align:center}
 .section-heading.center p{margin:0 auto}
 
-/* ── SCHEDULE ── */
-#schedule{background:var(--bg)}
-.day-tabs{
-  display:flex;gap:6px;flex-wrap:wrap;margin-bottom:32px;
-  background:var(--surface);
-  padding:6px;border-radius:100px;
-  display:inline-flex;
-}
-.day-tab{
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
-  color:var(--ink-muted);background:transparent;border:none;
-  padding:10px 22px;border-radius:100px;cursor:pointer;
-  transition:all .25s;
-}
+/* SCHEDULE */
+.day-tabs-wrap{background:var(--surface);padding:6px;border-radius:100px;display:inline-flex;flex-wrap:nowrap;gap:4px;margin-bottom:28px;overflow-x:auto;max-width:100%}
+.day-tab{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--ink-muted);background:transparent;border:none;padding:10px 22px;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap;flex-shrink:0}
 .day-tab.active{background:var(--white);color:var(--ink);box-shadow:0 2px 8px rgba(28,25,23,0.08)}
 .day-tab:hover:not(.active){color:var(--ink)}
-
 .sched-list{display:flex;flex-direction:column;gap:8px}
-.sched-card{
-  display:grid;grid-template-columns:90px 1fr auto;
-  align-items:center;gap:20px;
-  background:var(--white);
-  border:1px solid var(--border);
-  border-radius:var(--radius-sm);
-  padding:18px 24px;
-  cursor:pointer;
-  transition:all .25s;
-  box-shadow:0 1px 4px rgba(28,25,23,0.04);
-}
-.sched-card:hover{
-  transform:translateY(-2px);
-  box-shadow:var(--shadow-hover);
-  border-color:rgba(28,25,23,0.2);
-}
-.sched-time{
-  font-family:'Playfair Display',serif;
-  font-size:22px;font-weight:400;color:var(--forest);
-}
+.sched-card{display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:20px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 24px;cursor:pointer;transition:all .25s;box-shadow:0 1px 4px rgba(28,25,23,0.04)}
+.sched-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:rgba(28,25,23,.2)}
+.sched-time{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;color:var(--forest)}
 .sched-info-name{font-size:15px;font-weight:500;color:var(--ink);margin-bottom:3px}
 .sched-info-trainer{font-size:13px;font-weight:300;color:var(--ink-muted)}
-.sched-book-btn{
-  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;
-  color:var(--forest);background:rgba(45,59,46,.08);
-  border:none;padding:9px 20px;border-radius:100px;cursor:pointer;
-  transition:all .25s;white-space:nowrap;
-}
+.sched-book-btn{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:var(--forest);background:rgba(45,59,46,.08);border:none;padding:9px 20px;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap}
 .sched-card:hover .sched-book-btn{background:var(--forest);color:var(--white)}
-.sched-grid{display:none}
-.sched-grid.active{display:flex;flex-direction:column;gap:8px}
+.sched-grid{display:none;flex-direction:column;gap:8px}
+.sched-grid.active{display:flex}
 
-/* ── TRAINERS ── */
-#trainers{background:var(--surface)}
-.trainers-grid{
-  display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:16px;
-}
-.trainer-card{
-  background:var(--white);
-  border:1px solid var(--border);
-  border-radius:var(--radius);
-  overflow:hidden;cursor:pointer;
-  transition:all .3s;
-  box-shadow:0 2px 8px rgba(28,25,23,0.05);
-}
-.trainer-card:hover{
-  transform:translateY(-4px);
-  box-shadow:var(--shadow-hover);
-  border-color:transparent;
-}
-.trainer-photo-wrap{
-  aspect-ratio:3/4;
-  background:linear-gradient(145deg,var(--surface) 0%,var(--gold-light) 100%);
-  display:flex;align-items:center;justify-content:center;
-  position:relative;overflow:hidden;
-}
-.trainer-photo-wrap img{width:100%;height:100%;object-fit:cover;transition:transform .4s}
-.trainer-card:hover .trainer-photo-wrap img{transform:scale(1.04)}
-.trainer-photo-placeholder{
-  width:72px;height:72px;border-radius:50%;
-  background:rgba(201,169,110,0.25);
-  display:flex;align-items:center;justify-content:center;
-  transition:transform .3s;
-}
+/* TRAINERS */
+.trainers-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.trainer-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:all .3s;box-shadow:0 2px 8px rgba(28,25,23,0.05)}
+.trainer-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-hover);border-color:transparent}
+.trainer-photo-wrap{aspect-ratio:3/4;background:linear-gradient(145deg,var(--surface) 0%,var(--gold-light) 100%);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.trainer-photo-placeholder{width:72px;height:72px;border-radius:50%;background:rgba(201,169,110,0.25);display:flex;align-items:center;justify-content:center;transition:transform .3s}
 .trainer-card:hover .trainer-photo-placeholder{transform:scale(1.08)}
 .trainer-card-info{padding:16px 16px 18px}
-.trainer-card-name{
-  font-family:'Playfair Display',serif;
-  font-size:18px;font-weight:500;color:var(--ink);
-  margin-bottom:4px;
-}
+.trainer-card-name{font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:var(--ink);margin-bottom:4px}
 .trainer-card-spec{font-size:12px;font-weight:400;color:var(--ink-muted);line-height:1.4}
 
-/* ── PRICES ── */
-#prices{background:var(--bg)}
-.prices-grid{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
-  max-width:900px;margin:0 auto;
-}
-.price-card{
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--radius);padding:36px 32px;
-  box-shadow:var(--shadow-card);
-  transition:all .3s;cursor:default;
-  position:relative;overflow:hidden;
-}
-.price-card::before{
-  content:'';position:absolute;top:0;left:0;right:0;height:3px;
-  background:var(--surface);transition:background .3s;
-}
+/* PRICES */
+.prices-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:1000px;margin:0 auto}
+.price-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:32px 28px;box-shadow:var(--shadow-card);transition:all .3s;position:relative;overflow:hidden}
+.price-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--surface);transition:background .3s}
 .price-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-hover)}
 .price-card.featured{background:var(--forest);border-color:var(--forest)}
 .price-card.featured::before{background:var(--gold)}
-.price-card.featured .price-sessions,
-.price-card.featured .price-amount,
-.price-card.featured .price-per,
-.price-card.featured .price-note{color:rgba(248,246,243,.85)}
+.price-card.featured .price-sessions,.price-card.featured .price-amount,.price-card.featured .price-per,.price-card.featured .price-note{color:rgba(248,246,243,.85)}
 .price-card.featured .price-amount{color:var(--white)}
-.price-sessions{
-  font-size:13px;font-weight:400;color:var(--ink-muted);
-  margin-bottom:24px;letter-spacing:.02em;
-}
-.price-amount{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(40px,5vw,56px);font-weight:500;
-  color:var(--ink);line-height:1;
-  margin-bottom:6px;
-}
-.price-currency{font-size:20px;vertical-align:super;margin-right:2px}
-.price-per{font-size:13px;font-weight:300;color:var(--ink-muted);margin-bottom:20px}
-.price-note{font-size:14px;font-weight:300;color:var(--ink-muted);line-height:1.5}
 .price-card.featured .price-sessions{color:rgba(201,169,110,.9)}
+.price-sessions{font-size:13px;font-weight:400;color:var(--ink-muted);margin-bottom:20px}
+.price-amount{font-family:'Playfair Display',serif;font-size:clamp(36px,4vw,50px);font-weight:500;color:var(--ink);line-height:1;margin-bottom:6px}
+.price-currency{font-size:18px;vertical-align:super;margin-right:2px}
+.price-per{font-size:13px;font-weight:300;color:var(--ink-muted);margin-bottom:20px}
+.price-note{font-size:13px;font-weight:300;color:var(--ink-muted);line-height:1.5}
+.price-tag-popular{display:inline-block;font-size:10px;font-weight:500;letter-spacing:.1em;color:var(--gold);background:rgba(201,169,110,.15);padding:3px 12px;border-radius:100px;margin-bottom:10px;text-transform:uppercase}
 
-/* ── CONTACTS ── */
+/* CONTACTS */
 #contacts{background:var(--forest)}
 #contacts .section-heading h2{color:var(--white)}
 #contacts .section-heading p{color:rgba(248,246,243,.55)}
 .contacts-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
-.contacts-info{display:flex;flex-direction:column;gap:20px}
-.contact-item{
-  display:flex;gap:16px;align-items:flex-start;
-  padding:20px 24px;
-  background:rgba(248,246,243,.06);
-  border:1px solid rgba(248,246,243,.1);
-  border-radius:var(--radius-sm);
-  transition:background .25s;
-}
+.contact-item{display:flex;gap:16px;align-items:flex-start;padding:20px 24px;background:rgba(248,246,243,.06);border:1px solid rgba(248,246,243,.1);border-radius:var(--radius-sm);margin-bottom:10px;transition:background .25s}
 .contact-item:hover{background:rgba(248,246,243,.1)}
-.contact-icon{
-  width:40px;height:40px;border-radius:10px;
-  background:rgba(201,169,110,.2);
-  display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
-.contact-icon svg{color:var(--gold)}
+.contact-icon{width:40px;height:40px;border-radius:10px;background:rgba(201,169,110,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .contact-label{font-size:11px;font-weight:500;color:rgba(201,169,110,.8);letter-spacing:.1em;margin-bottom:4px;text-transform:uppercase}
 .contact-value{font-size:14px;font-weight:300;color:rgba(248,246,243,.8);text-decoration:none;transition:color .2s}
 .contact-value:hover{color:var(--white)}
 .socials-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.social-btn{
-  display:flex;align-items:center;gap:12px;
-  padding:16px 20px;
-  background:rgba(248,246,243,.06);
-  border:1px solid rgba(248,246,243,.1);
-  border-radius:var(--radius-sm);
-  text-decoration:none;cursor:pointer;
-  transition:all .25s;
-}
+.social-btn{display:flex;align-items:center;gap:12px;padding:16px 20px;background:rgba(248,246,243,.06);border:1px solid rgba(248,246,243,.1);border-radius:var(--radius-sm);text-decoration:none;cursor:pointer;transition:all .25s}
 .social-btn:hover{background:rgba(248,246,243,.12);transform:translateY(-2px)}
 .social-btn-name{font-size:14px;font-weight:400;color:rgba(248,246,243,.8)}
-.social-icon-wrap{
-  width:36px;height:36px;border-radius:8px;
-  display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
+.social-icon-wrap{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.contacts-label-white{font-size:11px;font-weight:500;letter-spacing:.12em;color:rgba(248,246,243,.4);margin-bottom:14px;text-transform:uppercase}
 
-/* ── TRAINER DETAIL PAGE ── */
+/* TRAINER PAGE */
 #trainer-page{display:none;min-height:100vh;padding-top:68px}
-.trainer-detail-hero{
-  background:var(--forest);padding:60px 48px 56px;
-}
-.trainer-detail-inner{
-  max-width:1160px;margin:0 auto;
-  display:grid;grid-template-columns:200px 1fr;gap:48px;align-items:end;
-}
-.trainer-detail-avatar{
-  width:200px;height:250px;border-radius:var(--radius);
-  background:linear-gradient(145deg,rgba(248,246,243,.1),rgba(201,169,110,.25));
-  display:flex;align-items:center;justify-content:center;
-  overflow:hidden;
-}
-.trainer-detail-avatar img{width:100%;height:100%;object-fit:cover}
-.trainer-detail-name{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(52px,8vw,88px);font-weight:500;
-  color:var(--white);line-height:.95;margin-bottom:12px;
-}
+.trainer-detail-hero{background:var(--forest);padding:60px 48px 56px}
+.trainer-detail-inner{max-width:1160px;margin:0 auto;display:grid;grid-template-columns:200px 1fr;gap:48px;align-items:end}
+.trainer-detail-avatar{width:200px;height:250px;border-radius:var(--radius);background:linear-gradient(145deg,rgba(248,246,243,.1),rgba(201,169,110,.25));display:flex;align-items:center;justify-content:center;overflow:hidden}
+.trainer-detail-name{font-family:'Playfair Display',serif;font-size:clamp(52px,8vw,88px);font-weight:500;color:var(--white);line-height:.95;margin-bottom:12px}
 .trainer-detail-spec{font-size:14px;font-weight:300;color:rgba(201,169,110,.9);letter-spacing:.06em}
 .trainer-detail-body{max-width:1160px;margin:0 auto;padding:56px 48px}
-.trainer-bio-text{
-  font-size:17px;font-weight:300;line-height:1.8;
-  color:var(--ink-muted);max-width:640px;margin-bottom:64px;
-}
-.detail-section-title{
-  font-family:'Playfair Display',serif;
-  font-size:28px;font-weight:500;color:var(--ink);
-  margin-bottom:20px;
-}
+.trainer-bio-text{font-size:17px;font-weight:300;line-height:1.8;color:var(--ink-muted);max-width:640px;margin-bottom:64px}
+.detail-section-title{font-family:'Playfair Display',serif;font-size:28px;font-weight:500;color:var(--ink);margin-bottom:20px}
 .trainer-sched-list{display:flex;flex-direction:column;gap:8px;margin-bottom:56px}
-.tsched-item{
-  display:grid;grid-template-columns:80px 1fr 100px auto;
-  align-items:center;gap:16px;
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:16px 22px;
-  transition:all .25s;
-}
+.tsched-item{display:grid;grid-template-columns:80px 1fr 100px auto;align-items:center;gap:16px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 22px;transition:all .25s}
 .tsched-item:hover{box-shadow:var(--shadow-card);border-color:rgba(28,25,23,.2)}
 .tsched-time{font-family:'Playfair Display',serif;font-size:20px;color:var(--forest)}
 .tsched-name{font-size:14px;font-weight:500;color:var(--ink)}
 .tsched-days{font-size:12px;font-weight:300;color:var(--ink-muted)}
-.tsched-btn{
-  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;
-  color:var(--forest);background:rgba(45,59,46,.08);
-  border:none;padding:9px 18px;border-radius:100px;cursor:pointer;
-  transition:all .25s;white-space:nowrap;
-}
+.tsched-btn{font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:var(--forest);background:rgba(45,59,46,.08);border:none;padding:9px 18px;border-radius:100px;cursor:pointer;transition:all .25s;white-space:nowrap}
 .tsched-btn:hover{background:var(--forest);color:var(--white)}
 .reviews-list{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
-.review-card{
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:22px 24px;
-}
+.review-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:22px 24px}
 .review-author{font-size:13px;font-weight:500;color:var(--ink);margin-bottom:8px}
 .review-body{font-size:14px;font-weight:300;color:var(--ink-muted);line-height:1.65}
-.btn-add-review{
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
-  color:var(--ink);background:transparent;
-  border:1.5px solid rgba(28,25,23,.2);
-  padding:12px 28px;border-radius:100px;cursor:pointer;
-  transition:all .25s;
-}
+.btn-add-review{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--ink);background:transparent;border:1.5px solid rgba(28,25,23,.2);padding:12px 28px;border-radius:100px;cursor:pointer;transition:all .25s}
 .btn-add-review:hover{background:var(--ink);color:var(--white);border-color:var(--ink)}
-.back-link{
-  display:inline-flex;align-items:center;gap:8px;
-  font-size:13px;font-weight:400;color:rgba(248,246,243,.5);
-  background:none;border:none;cursor:pointer;
-  margin-bottom:32px;transition:color .2s;
-  font-family:'DM Sans',sans-serif;letter-spacing:.02em;
-}
+.back-link{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:400;color:rgba(248,246,243,.5);background:none;border:none;cursor:pointer;margin-bottom:32px;transition:color .2s;font-family:'DM Sans',sans-serif}
 .back-link:hover{color:var(--white)}
 
-/* ── LK ── */
+/* LK */
 #lk-page{display:none;min-height:100vh;padding-top:68px;background:var(--bg)}
 .lk-header{background:var(--forest);padding:56px 48px 48px}
-.lk-header-inner{max-width:1160px;margin:0 auto}
-.lk-greeting{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(36px,5vw,52px);font-weight:500;
-  color:var(--white);margin-bottom:6px;
-}
+.lk-header-inner{max-width:1160px;margin:0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.lk-greeting{font-family:'Playfair Display',serif;font-size:clamp(32px,4vw,48px);font-weight:500;color:var(--white);margin-bottom:6px}
 .lk-phone-label{font-size:14px;font-weight:300;color:rgba(201,169,110,.8)}
-.lk-body{max-width:1160px;margin:0 auto;padding:52px 48px}
-.lk-grid{display:grid;grid-template-columns:1fr 320px;gap:32px;align-items:start}
-.lk-section-label{
-  font-family:'Playfair Display',serif;
-  font-size:22px;font-weight:500;color:var(--ink);margin-bottom:16px;
-}
-.lk-bookings-list{display:flex;flex-direction:column;gap:8px;margin-bottom:32px}
-.lk-booking-row{
-  display:grid;grid-template-columns:auto 1fr auto;
-  align-items:center;gap:16px;
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:16px 20px;
-  transition:all .25s;
-}
+.lk-header-right{text-align:right}
+.lk-ab-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(248,246,243,.1);border:1px solid rgba(248,246,243,.15);padding:8px 18px;border-radius:100px}
+.lk-ab-badge-text{font-size:13px;font-weight:400;color:rgba(248,246,243,.8)}
+.lk-ab-badge-dot{width:8px;height:8px;border-radius:50%;background:var(--gold)}
+.lk-body{max-width:1160px;margin:0 auto;padding:48px 48px}
+.lk-grid{display:grid;grid-template-columns:1fr 340px;gap:32px;align-items:start}
+.lk-section-label{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;color:var(--ink);margin-bottom:16px}
+.lk-bookings-list{display:flex;flex-direction:column;gap:8px;margin-bottom:28px}
+.lk-booking-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 20px;transition:all .25s}
 .lk-booking-row:hover{box-shadow:var(--shadow-card)}
-.lk-booking-time{
-  font-family:'Playfair Display',serif;
-  font-size:18px;color:var(--forest);white-space:nowrap;
-}
+.lk-booking-time{font-family:'Playfair Display',serif;font-size:18px;color:var(--forest);white-space:nowrap}
 .lk-booking-name{font-size:14px;font-weight:500;color:var(--ink);margin-bottom:2px}
 .lk-booking-trainer{font-size:12px;font-weight:300;color:var(--ink-muted)}
-.lk-cancel-btn{
-  font-size:12px;font-weight:400;color:var(--ink-muted);
-  background:none;border:1px solid rgba(28,25,23,.15);
-  padding:7px 16px;border-radius:100px;cursor:pointer;
-  font-family:'DM Sans',sans-serif;transition:all .25s;
-}
+.lk-cancel-btn{font-size:12px;font-weight:400;color:var(--ink-muted);background:none;border:1px solid rgba(28,25,23,.15);padding:7px 16px;border-radius:100px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .25s}
 .lk-cancel-btn:hover{border-color:#dc2626;color:#dc2626}
-.lk-ab-card{
-  background:var(--forest);border-radius:var(--radius);
-  padding:28px 24px;margin-bottom:20px;
-}
-.lk-ab-tag{font-size:10px;font-weight:500;letter-spacing:.15em;color:rgba(201,169,110,.8);margin-bottom:12px;text-transform:uppercase}
-.lk-ab-title{
-  font-family:'Playfair Display',serif;font-size:22px;font-weight:500;
-  color:var(--white);margin-bottom:20px;
-}
-.lk-ab-track{height:3px;background:rgba(248,246,243,.15);border-radius:2px;margin-bottom:10px}
+
+/* АБОНЕМЕНТ ВЫБОР */
+.ab-select-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-card);margin-bottom:16px}
+.ab-select-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:var(--ink);margin-bottom:4px}
+.ab-select-sub{font-size:13px;color:var(--ink-muted);margin-bottom:16px}
+.ab-options{display:flex;flex-direction:column;gap:8px}
+.ab-option{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border:1.5px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s}
+.ab-option:hover{border-color:var(--forest);background:rgba(45,59,46,.03)}
+.ab-option.selected{border-color:var(--forest);background:rgba(45,59,46,.05)}
+.ab-option-left{display:flex;align-items:center;gap:10px}
+.ab-radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;transition:all .2s;display:flex;align-items:center;justify-content:center}
+.ab-option.selected .ab-radio{border-color:var(--forest);background:var(--forest)}
+.ab-radio-dot{width:6px;height:6px;border-radius:50%;background:var(--white);display:none}
+.ab-option.selected .ab-radio-dot{display:block}
+.ab-option-name{font-size:14px;font-weight:400;color:var(--ink)}
+.ab-option-count{font-size:12px;color:var(--ink-muted)}
+.ab-option-price{font-family:'Playfair Display',serif;font-size:16px;font-weight:500;color:var(--forest)}
+.ab-save-btn{width:100%;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--white);background:var(--forest);border:none;padding:13px;border-radius:100px;cursor:pointer;margin-top:12px;transition:all .25s}
+.ab-save-btn:hover{background:var(--ink)}
+
+/* АКТИВНЫЙ АБОНЕМЕНТ */
+.lk-ab-active{background:var(--forest);border-radius:var(--radius);padding:24px;margin-bottom:16px}
+.lk-ab-tag{font-size:10px;font-weight:500;letter-spacing:.15em;color:rgba(201,169,110,.8);margin-bottom:8px;text-transform:uppercase}
+.lk-ab-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;color:var(--white);margin-bottom:16px}
+.lk-ab-track{height:3px;background:rgba(248,246,243,.15);border-radius:2px;margin-bottom:8px}
 .lk-ab-fill{height:100%;background:var(--gold);border-radius:2px;transition:width .6s}
 .lk-ab-meta{font-size:12px;font-weight:300;color:rgba(248,246,243,.5)}
-.lk-empty-state{
-  text-align:center;padding:48px 24px;
-  background:var(--white);border:1px dashed rgba(28,25,23,.15);
-  border-radius:var(--radius);color:var(--ink-muted);
-  font-size:15px;font-weight:300;line-height:1.7;
-}
+.lk-ab-change{font-size:12px;color:var(--gold);cursor:pointer;margin-top:8px;display:inline-block;background:none;border:none;font-family:'DM Sans',sans-serif}
+.lk-ab-change:hover{text-decoration:underline}
 
-/* ── TRAINER CABINET ── */
+.lk-empty-state{text-align:center;padding:40px 24px;background:var(--white);border:1px dashed rgba(28,25,23,.15);border-radius:var(--radius);color:var(--ink-muted);font-size:15px;font-weight:300;line-height:1.7}
+
+/* TC */
 #tc-page{display:none;min-height:100vh;padding-top:68px;background:var(--bg)}
 .tc-header{background:var(--ink);padding:56px 48px 48px}
 .tc-header-inner{max-width:1160px;margin:0 auto}
-.tc-greeting{
-  font-family:'Playfair Display',serif;
-  font-size:clamp(36px,5vw,52px);font-weight:500;
-  color:var(--white);margin-bottom:4px;
-}
+.tc-greeting{font-family:'Playfair Display',serif;font-size:clamp(36px,5vw,52px);font-weight:500;color:var(--white);margin-bottom:4px}
 .tc-role{font-size:14px;font-weight:300;color:rgba(248,246,243,.45);letter-spacing:.06em}
 .tc-body{max-width:1160px;margin:0 auto;padding:52px 48px}
-.tc-group{
-  background:var(--white);border:1px solid var(--border);
-  border-radius:var(--radius);overflow:hidden;margin-bottom:12px;
-  box-shadow:0 1px 4px rgba(28,25,23,.04);
-}
-.tc-group-header{
-  display:grid;grid-template-columns:80px 1fr auto;
-  align-items:center;gap:16px;
-  padding:18px 24px;cursor:pointer;transition:background .2s;
-}
+.tc-group{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px;box-shadow:0 1px 4px rgba(28,25,23,.04)}
+.tc-group-header{display:grid;grid-template-columns:80px 1fr auto;align-items:center;gap:16px;padding:18px 24px;cursor:pointer;transition:background .2s}
 .tc-group-header:hover{background:var(--bg)}
 .tc-group-time{font-family:'Playfair Display',serif;font-size:20px;color:var(--forest)}
 .tc-group-name{font-size:14px;font-weight:500;color:var(--ink)}
 .tc-group-days{font-size:12px;font-weight:300;color:var(--ink-muted)}
-.tc-group-count{
-  font-size:12px;font-weight:500;color:var(--ink-muted);
-  background:var(--surface);padding:5px 14px;border-radius:100px;
-  white-space:nowrap;
-}
-.tc-clients-list{
-  display:none;border-top:1px solid var(--border);padding:8px 0;
-}
+.tc-group-count{font-size:12px;font-weight:500;color:var(--ink-muted);background:var(--surface);padding:5px 14px;border-radius:100px;white-space:nowrap}
+.tc-clients-list{display:none;border-top:1px solid var(--border);padding:8px 0}
 .tc-clients-list.open{display:block}
-.tc-client{
-  display:grid;grid-template-columns:1fr auto;
-  align-items:center;gap:16px;
-  padding:12px 24px;transition:background .15s;
-}
+.tc-client{display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;padding:12px 24px;transition:background .15s}
 .tc-client:hover{background:var(--bg)}
 .tc-client-name{font-size:14px;font-weight:400;color:var(--ink)}
 .tc-client-phone{font-size:13px;font-weight:300;color:var(--ink-muted)}
 
-/* ── MODALS ── */
-.overlay{
-  display:none;position:fixed;inset:0;z-index:300;
-  background:rgba(28,25,23,.5);backdrop-filter:blur(8px);
-  align-items:center;justify-content:center;padding:20px;
-}
+/* MODALS */
+.overlay{display:none;position:fixed;inset:0;z-index:300;background:rgba(28,25,23,.5);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px}
 .overlay.open{display:flex}
-.modal-box{
-  background:var(--white);
-  border-radius:var(--radius);padding:48px 40px;
-  width:100%;max-width:460px;max-height:90vh;
-  overflow-y:auto;position:relative;
-  box-shadow:0 24px 80px rgba(28,25,23,.2);
-  animation:modalIn .3s ease;
-}
-.modal-close{
-  position:absolute;top:20px;right:22px;
-  width:32px;height:32px;border-radius:50%;
-  background:var(--surface);border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  transition:background .2s;
-}
+.modal-box{background:var(--white);border-radius:var(--radius);padding:48px 40px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;position:relative;box-shadow:0 24px 80px rgba(28,25,23,.2);animation:modalIn .3s ease}
+.modal-close{position:absolute;top:20px;right:22px;width:32px;height:32px;border-radius:50%;background:var(--surface);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
 .modal-close:hover{background:rgba(28,25,23,.12)}
-.modal-title{
-  font-family:'Playfair Display',serif;
-  font-size:28px;font-weight:500;color:var(--ink);
-  margin-bottom:6px;
-}
+.modal-title{font-family:'Playfair Display',serif;font-size:28px;font-weight:500;color:var(--ink);margin-bottom:6px}
 .modal-sub{font-size:14px;font-weight:300;color:var(--ink-muted);margin-bottom:32px;line-height:1.55}
 .form-group{margin-bottom:18px}
 .form-label{display:block;font-size:11px;font-weight:500;letter-spacing:.1em;color:var(--ink-muted);margin-bottom:8px;text-transform:uppercase}
-.form-input{
-  width:100%;font-family:'DM Sans',sans-serif;
-  font-size:15px;font-weight:300;color:var(--ink);
-  background:var(--surface);border:1.5px solid transparent;
-  padding:13px 16px;border-radius:var(--radius-sm);outline:none;
-  transition:all .25s;
-}
+.phone-wrap{position:relative;display:flex;align-items:center}
+.phone-prefix{position:absolute;left:16px;font-size:15px;font-weight:300;color:var(--ink);pointer-events:none;z-index:1}
+.form-input{width:100%;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:300;color:var(--ink);background:var(--surface);border:1.5px solid transparent;padding:13px 16px;border-radius:var(--radius-sm);outline:none;transition:all .25s}
 .form-input:focus{background:var(--white);border-color:var(--forest);box-shadow:0 0 0 4px rgba(45,59,46,.08)}
-.form-submit{
-  width:100%;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;
-  color:var(--white);background:var(--forest);
-  border:none;padding:15px;border-radius:100px;cursor:pointer;
-  margin-top:8px;transition:all .25s;letter-spacing:.01em;
-}
+.form-input.with-prefix{padding-left:38px}
+.form-submit{width:100%;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--white);background:var(--forest);border:none;padding:15px;border-radius:100px;cursor:pointer;margin-top:8px;transition:all .25s}
 .form-submit:hover{background:var(--ink);transform:translateY(-1px);box-shadow:0 8px 24px rgba(28,25,23,.2)}
 .modal-switch{text-align:center;margin-top:20px;font-size:13px;font-weight:300;color:var(--ink-muted)}
-.modal-switch a{color:var(--forest);font-weight:500;cursor:pointer;text-decoration:none}
+.modal-switch a{color:var(--forest);font-weight:500;cursor:pointer}
 .modal-switch a:hover{text-decoration:underline}
 .training-tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
-.t-tag{
-  font-size:11px;font-weight:400;color:var(--forest);
-  background:rgba(45,59,46,.08);padding:5px 14px;border-radius:100px;
-  letter-spacing:.04em;
-}
+.t-tag{font-size:11px;font-weight:400;color:var(--forest);background:rgba(45,59,46,.08);padding:5px 14px;border-radius:100px}
 .t-block{margin-bottom:18px}
 .t-block h4{font-size:11px;font-weight:500;letter-spacing:.12em;color:var(--ink-muted);margin-bottom:5px;text-transform:uppercase}
 .t-block p{font-size:14px;font-weight:300;line-height:1.65;color:var(--ink)}
-.review-form textarea{
-  width:100%;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:300;
-  color:var(--ink);background:var(--surface);border:1.5px solid transparent;
-  padding:13px 16px;border-radius:var(--radius-sm);outline:none;
-  resize:vertical;min-height:110px;transition:all .25s;
-}
+.review-form textarea{width:100%;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:300;color:var(--ink);background:var(--surface);border:1.5px solid transparent;padding:13px 16px;border-radius:var(--radius-sm);outline:none;resize:vertical;min-height:110px;transition:all .25s}
 .review-form textarea:focus{background:var(--white);border-color:var(--forest)}
 
-/* ── TOAST ── */
-.toast{
-  position:fixed;bottom:28px;left:50%;
-  transform:translateX(-50%) translateY(16px);
-  background:var(--ink);color:var(--white);
-  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:400;
-  padding:13px 28px;border-radius:100px;
-  opacity:0;transition:all .3s;z-index:400;pointer-events:none;
-  white-space:nowrap;box-shadow:0 8px 32px rgba(28,25,23,.2);
-}
+/* TOAST */
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--white);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:400;padding:13px 28px;border-radius:100px;opacity:0;transition:all .3s;z-index:400;pointer-events:none;white-space:nowrap;box-shadow:0 8px 32px rgba(28,25,23,.2)}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* ── MOBILE MENU ── */
-.mobile-menu{
-  display:none;position:fixed;
-  top:68px;left:0;right:0;z-index:199;
-  background:var(--white);border-bottom:1px solid var(--border);
-  padding:20px 24px 28px;
-  box-shadow:0 12px 40px rgba(28,25,23,.1);
-  flex-direction:column;gap:4px;
-}
-.mobile-menu.open{display:flex}
-.mobile-menu a,.mobile-menu button{
-  font-family:'DM Sans',sans-serif;font-size:16px;
-  font-weight:400;color:var(--ink);text-decoration:none;
-  background:none;border:none;cursor:pointer;
-  text-align:left;padding:12px 0;
-  border-bottom:1px solid var(--border);
-  transition:color .2s;
-}
-.mobile-menu a:hover,.mobile-menu button:hover{color:var(--forest)}
-.mobile-menu a:last-child,.mobile-menu button:last-child{border-bottom:none}
-
-/* ── KEYFRAMES ── */
+/* KEYFRAMES */
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes letterUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
 @keyframes scrollDot{0%{top:-6px;opacity:0}20%{opacity:1}80%{opacity:1}100%{top:100%;opacity:0}}
 @keyframes modalIn{from{opacity:0;transform:scale(.97) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
-/* ── RESPONSIVE ── */
-@media(max-width:900px){
+/* RESPONSIVE */
+@media(max-width:960px){
   .trainers-grid{grid-template-columns:repeat(3,1fr)}
-  .prices-grid{grid-template-columns:1fr}
+  .prices-grid{grid-template-columns:repeat(2,1fr)}
   .contacts-grid{grid-template-columns:1fr}
   .lk-grid{grid-template-columns:1fr}
   .trainer-detail-inner{grid-template-columns:1fr}
-  .trainer-detail-avatar{width:140px;height:175px}
 }
 @media(max-width:680px){
   #nav{padding:0 20px}
   .nav-links,.nav-actions{display:none}
   .burger{display:flex}
-  .section{padding:64px 20px}
-  .section-sm{padding:52px 20px}
+  .section{padding:56px 20px}
   .trainers-grid{grid-template-columns:repeat(2,1fr)}
   .sched-card{grid-template-columns:70px 1fr;gap:12px}
   .sched-book-btn{display:none}
   .tsched-item{grid-template-columns:70px 1fr auto;gap:10px}
   .tsched-days{display:none}
-  .lk-body,.tc-body,.trainer-detail-body{padding:36px 20px}
-  .lk-header,.tc-header,.trainer-detail-hero{padding:48px 20px 36px}
-  .trainer-detail-inner{padding:0 20px}
+  .lk-body,.tc-body,.trainer-detail-body{padding:32px 20px}
+  .lk-header,.tc-header,.trainer-detail-hero{padding:44px 20px 32px}
+  .lk-header-inner{flex-direction:column;align-items:flex-start}
+  .trainer-detail-inner{padding:0 20px;grid-template-columns:1fr}
+  .trainer-detail-avatar{width:120px;height:150px}
   .socials-grid{grid-template-columns:1fr}
-  .hero-stats{gap:32px}
+  .prices-grid{grid-template-columns:1fr}
+  .modal-box{padding:32px 20px}
   .tc-group-header{grid-template-columns:70px 1fr auto;gap:10px}
-  .tc-client{grid-template-columns:1fr}
-  .tc-client-phone{display:none}
-  .modal-box{padding:36px 24px}
+  .hero-badges{gap:8px}
+  .hero-badge{padding:10px 16px;gap:10px}
+  .hero-badge-text{font-size:13px}
 }
 </style>
 </head>
@@ -681,24 +362,32 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
     <li><a onclick="navTo('contacts')">Контакты</a></li>
   </ul>
   <div class="nav-actions" id="nav-auth"></div>
-  <button class="burger" onclick="toggleMenu()" aria-label="Меню">
-    <span></span><span></span><span></span>
-  </button>
+  <button class="burger" onclick="toggleMenu()" aria-label="Меню"><span></span><span></span><span></span></button>
 </nav>
 
 <div class="mobile-menu" id="mobile-menu">
-  <a onclick="navTo('schedule');closeMenu()">Расписание</a>
-  <a onclick="navTo('trainers');closeMenu()">Тренеры</a>
-  <a onclick="navTo('prices');closeMenu()">Абонементы</a>
-  <a onclick="navTo('contacts');closeMenu()">Контакты</a>
-  <button onclick="openAuth('login');closeMenu()">Войти</button>
-  <button onclick="openAuth('register');closeMenu()">Записаться</button>
+  <a onclick="navTo('schedule');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    Расписание
+  </a>
+  <a onclick="navTo('trainers');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Тренеры
+  </a>
+  <a onclick="navTo('prices');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+    Абонементы
+  </a>
+  <a onclick="navTo('contacts');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    Контакты
+  </a>
+  <div class="mm-divider"></div>
+  <div id="mm-auth-section"></div>
 </div>
 
-<!-- ═══ HOME ═══ -->
+<!-- HOME -->
 <div id="home-page">
-
-<!-- HERO -->
 <section id="hero">
   <div class="hero-orb hero-orb-1"></div>
   <div class="hero-orb hero-orb-2"></div>
@@ -712,18 +401,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
       <button class="hero-btn-main" onclick="navTo('schedule')">Записаться на тренировку</button>
       <button class="hero-btn-ghost" onclick="navTo('trainers')">Познакомиться с тренерами</button>
     </div>
-    <div class="hero-stats">
-      <div class="hero-stat">
-        <div class="hero-stat-num">5</div>
-        <div class="hero-stat-label">тренеров</div>
+    <div class="hero-badges">
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>Лучшие тренеры</b> — сертифицированные профессионалы с опытом от 3 лет</span>
       </div>
-      <div class="hero-stat">
-        <div class="hero-stat-num">9+</div>
-        <div class="hero-stat-label">направлений</div>
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>9 направлений</b> — TRX, силовые, растяжка, женское здоровье и не только</span>
       </div>
-      <div class="hero-stat">
-        <div class="hero-stat-num">6</div>
-        <div class="hero-stat-label">дней в неделю</div>
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>Только для женщин</b> — безопасная атмосфера без лишних взглядов</span>
       </div>
     </div>
   </div>
@@ -740,15 +435,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
       <h2>Расписание</h2>
       <p>Выбери день, направление и тренера — и запишись прямо здесь</p>
     </div>
-    <div style="margin-bottom:28px">
-      <div class="day-tabs" id="day-tabs">
-        <button class="day-tab active" onclick="switchDay('mon',this)">Пн</button>
-        <button class="day-tab" onclick="switchDay('tue',this)">Вт</button>
-        <button class="day-tab" onclick="switchDay('wed',this)">Ср</button>
-        <button class="day-tab" onclick="switchDay('thu',this)">Чт</button>
-        <button class="day-tab" onclick="switchDay('fri',this)">Пт</button>
-        <button class="day-tab" onclick="switchDay('sat',this)">Сб</button>
-      </div>
+    <div class="day-tabs-wrap">
+      <button class="day-tab active" onclick="switchDay('mon',this)">Понедельник</button>
+      <button class="day-tab" onclick="switchDay('tue',this)">Вторник</button>
+      <button class="day-tab" onclick="switchDay('wed',this)">Среда</button>
+      <button class="day-tab" onclick="switchDay('thu',this)">Четверг</button>
+      <button class="day-tab" onclick="switchDay('fri',this)">Пятница</button>
+      <button class="day-tab" onclick="switchDay('sat',this)">Суббота</button>
     </div>
     <div id="sched-mon" class="sched-grid active"></div>
     <div id="sched-tue" class="sched-grid"></div>
@@ -779,12 +472,19 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
     </div>
     <div class="prices-grid">
       <div class="price-card">
+        <div class="price-sessions">Разовое посещение</div>
+        <div class="price-amount"><span class="price-currency">₽</span>700</div>
+        <div class="price-per">одно занятие</div>
+        <div class="price-note">Попробуй без обязательств</div>
+      </div>
+      <div class="price-card">
         <div class="price-sessions">8 тренировок в месяц</div>
         <div class="price-amount"><span class="price-currency">₽</span>4 300</div>
         <div class="price-per">537 ₽ за занятие</div>
         <div class="price-note">Для тех, кто тренируется 2 раза в неделю</div>
       </div>
       <div class="price-card featured">
+        <div class="price-tag-popular">Популярный</div>
         <div class="price-sessions">12 тренировок в месяц</div>
         <div class="price-amount"><span class="price-currency">₽</span>4 800</div>
         <div class="price-per">400 ₽ за занятие</div>
@@ -797,72 +497,46 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
         <div class="price-note">Максимальный прогресс — 4 раза в неделю</div>
       </div>
     </div>
-    <p style="text-align:center;margin-top:32px;font-size:13px;font-weight:300;color:var(--ink-muted)">Персональные тренировки — по договорённости с тренером</p>
+    <p style="text-align:center;margin-top:28px;font-size:13px;font-weight:300;color:var(--ink-muted)">Персональные тренировки — по договорённости с тренером</p>
   </div>
 </section>
 
 <!-- CONTACTS -->
 <section class="section" id="contacts">
   <div class="container">
-    <div class="section-heading">
-      <h2>Как нас найти</h2>
-      <p>Ждём тебя в нашей студии</p>
-    </div>
+    <div class="section-heading"><h2>Как нас найти</h2><p>Ждём тебя в нашей студии</p></div>
     <div class="contacts-grid">
-      <div class="contacts-info">
+      <div>
         <div class="contact-item">
-          <div class="contact-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          </div>
-          <div>
-            <div class="contact-label">Адрес</div>
-            <div class="contact-value">ул. Кремлёвская, 1, ЖК Кремлёвский, Астрахань</div>
-          </div>
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div><div class="contact-label">Адрес</div><div class="contact-value">ул. Кремлёвская, 1, ЖК Кремлёвский, Астрахань</div></div>
         </div>
         <div class="contact-item">
-          <div class="contact-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 15z"/></svg>
-          </div>
-          <div>
-            <div class="contact-label">Телефон</div>
-            <a href="tel:+79897949411" class="contact-value">+7 (989) 794-94-11</a>
-          </div>
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.73a16 16 0 0 0 6 6z"/></svg></div>
+          <div><div class="contact-label">Телефон</div><a href="tel:+79897949411" class="contact-value">+7 (989) 794-94-11</a></div>
         </div>
         <div class="contact-item">
-          <div class="contact-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </div>
-          <div>
-            <div class="contact-label">Режим работы</div>
-            <div class="contact-value">Пн – Сб, с 9:00 до 20:00</div>
-          </div>
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div><div class="contact-label">Режим работы</div><div class="contact-value">Пн – Сб, с 9:00 до 20:00</div></div>
         </div>
       </div>
       <div>
-        <div class="contact-label" style="color:rgba(248,246,243,.5);margin-bottom:12px">Мы в соцсетях</div>
+        <div class="contacts-label-white">Мы в соцсетях</div>
         <div class="socials-grid">
           <a href="https://www.instagram.com/fizkult_ast" target="_blank" class="social-btn">
-            <div class="social-icon-wrap" style="background:rgba(201,169,110,.2)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="var(--gold)" stroke="none"/></svg>
-            </div>
+            <div class="social-icon-wrap" style="background:rgba(201,169,110,.2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="var(--gold)" stroke="none"/></svg></div>
             <span class="social-btn-name">Instagram</span>
           </a>
           <a href="https://vk.ru/fizkult_ast_30" target="_blank" class="social-btn">
-            <div class="social-icon-wrap" style="background:rgba(93,131,177,.2)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5d83b1" stroke-width="1.5"><path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12z"/><path d="M7 9h2l2 4 2-4h2l-3 6H9L7 9z" stroke="none" fill="#5d83b1"/></svg>
-            </div>
+            <div class="social-icon-wrap" style="background:rgba(93,131,177,.2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5d83b1" stroke-width="1.5"><ellipse cx="12" cy="12" rx="10" ry="10"/></svg></div>
             <span class="social-btn-name">ВКонтакте</span>
           </a>
           <a href="https://t.me/+79897949411" target="_blank" class="social-btn">
-            <div class="social-icon-wrap" style="background:rgba(41,182,246,.15)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#29b6f6" stroke-width="1.5"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
-            </div>
+            <div class="social-icon-wrap" style="background:rgba(41,182,246,.15)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#29b6f6" stroke-width="1.5"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg></div>
             <span class="social-btn-name">Telegram</span>
           </a>
           <a href="https://wa.me/79897949411" target="_blank" class="social-btn">
-            <div class="social-icon-wrap" style="background:rgba(72,187,120,.15)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#48bb78" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            </div>
+            <div class="social-icon-wrap" style="background:rgba(72,187,120,.15)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#48bb78" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
             <span class="social-btn-name">WhatsApp</span>
           </a>
         </div>
@@ -870,23 +544,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
     </div>
   </div>
 </section>
-</div><!-- /home-page -->
+</div><!-- /home -->
 
-<!-- ═══ TRAINER DETAIL ═══ -->
+<!-- TRAINER PAGE -->
 <div id="trainer-page">
   <div class="trainer-detail-hero">
     <div class="trainer-detail-inner">
       <div>
-        <button class="back-link" onclick="showPage('home');setTimeout(()=>navTo('trainers'),50)">
+        <button class="back-link" onclick="showPage('home');setTimeout(()=>navTo('trainers'),60)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
           Все тренеры
         </button>
         <div id="tp-avatar" class="trainer-detail-avatar"></div>
       </div>
-      <div>
-        <div class="trainer-detail-name" id="tp-name"></div>
-        <div class="trainer-detail-spec" id="tp-spec"></div>
-      </div>
+      <div><div class="trainer-detail-name" id="tp-name"></div><div class="trainer-detail-spec" id="tp-spec"></div></div>
     </div>
   </div>
   <div class="trainer-detail-body">
@@ -899,27 +570,30 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
   </div>
 </div>
 
-<!-- ═══ LK ═══ -->
+<!-- LK -->
 <div id="lk-page">
-  <div class="lk-header"><div class="lk-header-inner">
-    <div class="lk-greeting" id="lk-greeting"></div>
-    <div class="lk-phone-label" id="lk-phone"></div>
-  </div></div>
+  <div class="lk-header">
+    <div class="lk-header-inner">
+      <div>
+        <div class="lk-greeting" id="lk-greeting"></div>
+        <div class="lk-phone-label" id="lk-phone"></div>
+      </div>
+      <div class="lk-header-right" id="lk-header-ab"></div>
+    </div>
+  </div>
   <div class="lk-body">
     <div class="lk-grid">
       <div>
-        <div class="lk-section-label">Мои записи</div>
+        <div class="lk-section-label">Мои тренировки</div>
         <div class="lk-bookings-list" id="lk-list"></div>
-        <button class="btn-outline" onclick="showPage('home');setTimeout(()=>navTo('schedule'),50)">Смотреть расписание</button>
+        <button class="btn-outline" onclick="showPage('home');setTimeout(()=>navTo('schedule'),60)">Смотреть расписание</button>
       </div>
-      <div>
-        <div class="lk-ab-card" id="lk-ab"></div>
-      </div>
+      <div id="lk-sidebar"></div>
     </div>
   </div>
 </div>
 
-<!-- ═══ TRAINER CABINET ═══ -->
+<!-- TC -->
 <div id="tc-page">
   <div class="tc-header"><div class="tc-header-inner">
     <div class="tc-greeting" id="tc-greeting"></div>
@@ -931,16 +605,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
   </div>
 </div>
 
-<!-- ═══ MODALS ═══ -->
+<!-- MODALS -->
 <div class="overlay" id="ov-auth">
   <div class="modal-box">
-    <button class="modal-close" onclick="closeOverlay('ov-auth')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
+    <button class="modal-close" onclick="closeOv('ov-auth')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     <div id="auth-login">
       <h2 class="modal-title">Войти</h2>
       <p class="modal-sub">Введите номер телефона, который указывали при регистрации</p>
-      <div class="form-group"><label class="form-label">Телефон</label><input class="form-input" type="tel" id="li-phone" placeholder="+7 (___) ___-__-__"></div>
+      <div class="form-group">
+        <label class="form-label">Телефон</label>
+        <div class="phone-wrap"><span class="phone-prefix">+7</span><input class="form-input with-prefix" type="tel" id="li-phone" placeholder="(___) ___-__-__" oninput="formatPhone(this)"></div>
+      </div>
       <button class="form-submit" onclick="doLogin()">Войти</button>
       <div class="modal-switch">Нет аккаунта? <a onclick="switchAuth('register')">Зарегистрироваться</a></div>
     </div>
@@ -948,7 +623,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
       <h2 class="modal-title">Регистрация</h2>
       <p class="modal-sub">Создайте аккаунт, чтобы записываться на тренировки</p>
       <div class="form-group"><label class="form-label">ФИО</label><input class="form-input" type="text" id="rg-name" placeholder="Иванова Мария Петровна"></div>
-      <div class="form-group"><label class="form-label">Телефон</label><input class="form-input" type="tel" id="rg-phone" placeholder="+7 (___) ___-__-__"></div>
+      <div class="form-group">
+        <label class="form-label">Телефон</label>
+        <div class="phone-wrap"><span class="phone-prefix">+7</span><input class="form-input with-prefix" type="tel" id="rg-phone" placeholder="(___) ___-__-__" oninput="formatPhone(this)"></div>
+      </div>
       <button class="form-submit" onclick="doRegister()">Создать аккаунт</button>
       <div class="modal-switch">Уже есть аккаунт? <a onclick="switchAuth('login')">Войти</a></div>
     </div>
@@ -957,18 +635,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
 
 <div class="overlay" id="ov-training">
   <div class="modal-box">
-    <button class="modal-close" onclick="closeOverlay('ov-training')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
+    <button class="modal-close" onclick="closeOv('ov-training')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     <div id="training-content"></div>
   </div>
 </div>
 
 <div class="overlay" id="ov-booking">
   <div class="modal-box">
-    <button class="modal-close" onclick="closeOverlay('ov-booking')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
+    <button class="modal-close" onclick="closeOv('ov-booking')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     <h2 class="modal-title" id="bk-title">Запись</h2>
     <p class="modal-sub" id="bk-sub"></p>
     <button class="form-submit" onclick="confirmBook()">Подтвердить запись</button>
@@ -977,9 +651,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
 
 <div class="overlay" id="ov-review">
   <div class="modal-box">
-    <button class="modal-close" onclick="closeOverlay('ov-review')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
+    <button class="modal-close" onclick="closeOv('ov-review')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     <h2 class="modal-title">Оставить отзыв</h2>
     <p class="modal-sub" id="rv-sub"></p>
     <div class="review-form">
@@ -992,23 +664,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
 <div class="toast" id="toast"></div>
 
 <script>
-/* ─ DATA ─ */
+/* DATA */
 const TRAINERS={
-  zosya:{name:'Зося',spec:'TRX',bio:'Сертифицированный инструктор по TRX с опытом более 4 лет. Специализируется на функциональных тренировках с подвесными петлями — помогает укрепить мышцы-стабилизаторы, улучшить осанку и развить координацию. Каждое занятие строится на внимании к технике.',
-    schedule:[{time:'09:00',name:'TRX',days:'Пн, Ср, Пт'},{time:'11:00',name:'TRX',days:'Пн, Ср, Пт'}],
-    reviews:[{author:'Алина М.',text:'Зося — лучший тренер! После месяца занятий почувствовала реальный прогресс. Очень внимательная, всегда поправляет технику.'},{author:'Катя Р.',text:'Тренировки с Зосей — это всегда качественно и интересно. Никогда не скучно!'}]},
-  ksyusha:{name:'Ксюша',spec:'Силовая · TRX · Crossfit',bio:'Мастер спорта по тяжёлой атлетике. Тренирует женщин уже 6 лет. Убеждена: каждая женщина способна быть сильной — и в спортзале, и в жизни. Тренировки строятся на прогрессивной нагрузке и правильной технике.',
-    schedule:[{time:'17:00',name:'Силовая',days:'Пн, Ср, Пт'},{time:'18:00',name:'TRX',days:'Пн, Ср, Пт'},{time:'19:00',name:'Crossfit',days:'Пн, Ср, Пт'}],
-    reviews:[{author:'Ольга С.',text:'Ксюша — это драйв, энергия и результат. За 2 месяца кроссфита я стала совершенно другим человеком!'}]},
-  salma:{name:'Сальма',spec:'Женское здоровье · Силовая PRO · Осанка+Шпагат',bio:'Эксперт в области женского здоровья и функционального движения. Образование — физическая реабилитация и спортивная медицина. Подход: осознанность и работа с телом, а не против него.',
-    schedule:[{time:'11:00',name:'Женское здоровье',days:'Вт, Чт, Сб'},{time:'18:00',name:'Силовая PRO',days:'Вт, Чт, Сб'},{time:'19:00',name:'Осанка + Шпагат',days:'Вт, Чт, Сб'}],
-    reviews:[{author:'Наташа Д.',text:'Сальма изменила моё отношение к своему телу. Её занятия по женскому здоровью — просто открытие.'}]},
-  farida:{name:'Фарида',spec:'Мама+Малыш · Здоровая спина+Растяжка',bio:'Специалист по послеродовому восстановлению и мягким практикам. Мама двоих детей. Ведёт уникальное направление "Мама + Малыш" — тренировки, куда можно прийти вместе с ребёнком.',
-    schedule:[{time:'16:00',name:'Мама + Малыш',days:'Вт, Чт, Сб'},{time:'17:00',name:'Здоровая спина + Растяжка',days:'Вт, Чт, Сб'}],
-    reviews:[{author:'Маша К.',text:'Фарида — настоящая находка! Хожу с малышом на её занятия. И я отдыхаю душой, и ребёнок в восторге.'}]},
-  vika:{name:'Вика',spec:'Силовая · Шпагат / Растяжка',bio:'Бывшая профессиональная гимнастка, тренирует 3 года. Специализируется на развитии гибкости и силы. Её занятия по шпагату — самые популярные в студии. Умеет безопасно растянуть даже самых "деревянных".',
-    schedule:[{time:'09:00',name:'Силовая',days:'Вт, Чт, Сб'},{time:'10:00',name:'Шпагат / Растяжка',days:'Вт, Чт, Сб'}],
-    reviews:[{author:'Юля В.',text:'Сделала поперечный шпагат за 3 месяца занятий с Викой! Казалось, это невозможно.'}]}
+  zosya:{name:'Зося',spec:'TRX',bio:'Сертифицированный инструктор по TRX с опытом более 4 лет. Специализируется на функциональных тренировках с подвесными петлями — помогает укрепить мышцы-стабилизаторы, улучшить осанку и развить координацию.',schedule:[{time:'09:00',name:'TRX',days:'Пн, Ср, Пт'},{time:'11:00',name:'TRX',days:'Пн, Ср, Пт'}],reviews:[{author:'Алина М.',text:'Зося — лучший тренер! После месяца занятий почувствовала реальный прогресс.'},{author:'Катя Р.',text:'Тренировки с Зосей — это всегда качественно и интересно!'}]},
+  ksyusha:{name:'Ксюша',spec:'Силовая · TRX · Crossfit',bio:'Мастер спорта по тяжёлой атлетике. Тренирует женщин уже 6 лет. Убеждена: каждая женщина способна быть сильной — и в спортзале, и в жизни.',schedule:[{time:'17:00',name:'Силовая',days:'Пн, Ср, Пт'},{time:'18:00',name:'TRX',days:'Пн, Ср, Пт'},{time:'19:00',name:'Crossfit',days:'Пн, Ср, Пт'}],reviews:[{author:'Ольга С.',text:'Ксюша — это драйв, энергия и результат. За 2 месяца кроссфита я стала другим человеком!'}]},
+  salma:{name:'Сальма',spec:'Женское здоровье · Силовая PRO · Осанка+Шпагат',bio:'Эксперт в области женского здоровья и функционального движения. Образование — физическая реабилитация и спортивная медицина.',schedule:[{time:'11:00',name:'Женское здоровье',days:'Вт, Чт, Сб'},{time:'18:00',name:'Силовая PRO',days:'Вт, Чт, Сб'},{time:'19:00',name:'Осанка + Шпагат',days:'Вт, Чт, Сб'}],reviews:[{author:'Наташа Д.',text:'Сальма изменила моё отношение к своему телу. Её занятия — просто открытие.'}]},
+  farida:{name:'Фарида',spec:'Мама+Малыш · Здоровая спина+Растяжка',bio:'Специалист по послеродовому восстановлению. Мама двоих детей. Ведёт уникальное направление "Мама + Малыш" — тренировки, куда можно прийти вместе с ребёнком.',schedule:[{time:'16:00',name:'Мама + Малыш',days:'Вт, Чт, Сб'},{time:'17:00',name:'Здоровая спина + Растяжка',days:'Вт, Чт, Сб'}],reviews:[{author:'Маша К.',text:'Фарида — настоящая находка! Хожу с малышом, и это просто спасение.'}]},
+  vika:{name:'Вика',spec:'Силовая · Шпагат / Растяжка',bio:'Бывшая профессиональная гимнастка, тренирует 3 года. Специализируется на развитии гибкости и силы. Её занятия по шпагату — самые популярные в студии.',schedule:[{time:'09:00',name:'Силовая',days:'Вт, Чт, Сб'},{time:'10:00',name:'Шпагат / Растяжка',days:'Вт, Чт, Сб'}],reviews:[{author:'Юля В.',text:'Сделала поперечный шпагат за 3 месяца! Казалось, это невозможно.'}]}
 };
 
 const SCHEDULE={
@@ -1018,70 +680,181 @@ const SCHEDULE={
 SCHEDULE.wed=[...SCHEDULE.mon];SCHEDULE.thu=[...SCHEDULE.tue];SCHEDULE.fri=[...SCHEDULE.mon];SCHEDULE.sat=[...SCHEDULE.tue];
 
 const TRAININGS={
-  trx:{name:'TRX',tags:['Функциональная','Все уровни','50 мин'],what:'Тренировка с подвесными петлями TRX. Используете вес собственного тела для проработки всех мышечных групп.',includes:'Разминка, основной блок на пресс, спину, ноги и руки, заминка и растяжка.',who:'Подходит для всех уровней подготовки — нагрузка регулируется углом наклона тела.'},
-  silovaya:{name:'Силовая',tags:['Силовая','Начинающим','60 мин'],what:'Классическая силовая тренировка со штангой, гантелями и тренажёрами. Акцент на базовых движениях.',includes:'Разминка, базовые упражнения: приседания, тяги, жимы. Работа с собственным весом и снарядами, заминка.',who:'Для всех, кто хочет стать сильнее, улучшить тонус мышц и ускорить метаболизм.'},
-  crossfit:{name:'Crossfit',tags:['Высокая интенсивность','Продвинутый','55 мин'],what:'Функциональные круговые тренировки высокой интенсивности. Развивают силу, выносливость и скорость.',includes:'Разминка, WOD (комплекс дня): гимнастика, тяжёлая атлетика, кардио. Финальная растяжка.',who:'Рекомендуется при наличии базовой физической подготовки.'},
-  shpagat:{name:'Шпагат / Растяжка',tags:['Растяжка','Гибкость','55 мин'],what:'Специализированная тренировка для развития гибкости и постепенного освоения шпагата.',includes:'Разогрев суставов, пассивная и активная растяжка, работа с тренером, релаксация.',who:'Для всех — от новичков до тех, кто хочет улучшить уже имеющуюся растяжку.'},
-  zdorovye:{name:'Женское здоровье',tags:['Здоровье','Мягкие практики','50 мин'],what:'Тренировки с учётом женской физиологии: тазовое дно, глубокие мышцы, гормональный баланс.',includes:'Дыхательные практики, упражнения для тазового дна, мягкие силовые блоки, растяжка.',who:'Для женщин любого возраста. Особенно рекомендуется после родов и при гормональных изменениях.'},
-  mama:{name:'Мама + Малыш',tags:['Для мам','С детьми','45 мин'],what:'Уникальный формат — тренировка для мамы, пока малыш рядом. Восстановление после родов.',includes:'Упражнения с весом малыша, восстановительные упражнения, игровые элементы для ребёнка.',who:'Для мам с детьми от 3 месяцев до 2 лет.'},
-  spina:{name:'Здоровая спина + Растяжка',tags:['Реабилитация','Спина','55 мин'],what:'Занятие для укрепления мышечного корсета и снятия напряжения со спины.',includes:'Упражнения для глубоких мышц спины, растяжка грудного и поясничного отделов, релаксация.',who:'При болях в спине, сидячей работе, после беременности.'},
-  silovayapro:{name:'Силовая PRO',tags:['Продвинутый','Силовая','60 мин'],what:'Продвинутая силовая программа с прогрессивной нагрузкой для тех, кто уже имеет базу.',includes:'Тяжёлые базовые движения, суперсеты, работа на гипертрофию и силу.',who:'Для женщин с опытом силовых тренировок от 6 месяцев.'},
-  osanka:{name:'Осанка + Шпагат',tags:['Осанка','Гибкость','50 мин'],what:'Комплексная тренировка для красивой осанки и развития гибкости — два в одном.',includes:'Укрепление спины и плечевого пояса, растяжка передней поверхности, шпагат.',who:'Для всех, кто хочет красиво держать спину и стать гибче.'}
+  trx:{name:'TRX',tags:['Функциональная','Все уровни','50 мин'],what:'Тренировка с подвесными петлями TRX. Вес собственного тела — для проработки всех мышечных групп.',includes:'Разминка, основной блок на пресс, спину, ноги и руки, заминка и растяжка.',who:'Подходит для всех уровней — нагрузка регулируется углом наклона тела.'},
+  silovaya:{name:'Силовая',tags:['Силовая','Начинающим','60 мин'],what:'Классическая силовая тренировка со штангой, гантелями и тренажёрами.',includes:'Разминка, базовые упражнения: приседания, тяги, жимы, заминка.',who:'Для всех, кто хочет стать сильнее и улучшить тонус мышц.'},
+  crossfit:{name:'Crossfit',tags:['Высокая интенсивность','Продвинутый','55 мин'],what:'Функциональные круговые тренировки высокой интенсивности.',includes:'Разминка, WOD: гимнастика, тяжёлая атлетика, кардио, растяжка.',who:'Рекомендуется при наличии базовой физической подготовки.'},
+  shpagat:{name:'Шпагат / Растяжка',tags:['Растяжка','Гибкость','55 мин'],what:'Специализированная тренировка для развития гибкости и освоения шпагата.',includes:'Разогрев суставов, пассивная и активная растяжка, работа с тренером, релаксация.',who:'Для всех — от новичков до тех, кто хочет улучшить растяжку.'},
+  zdorovye:{name:'Женское здоровье',tags:['Здоровье','Мягкие практики','50 мин'],what:'Тренировки с учётом женской физиологии: тазовое дно, глубокие мышцы, гормональный баланс.',includes:'Дыхательные практики, упражнения для тазового дна, мягкие силовые блоки, растяжка.',who:'Для женщин любого возраста, особенно после родов.'},
+  mama:{name:'Мама + Малыш',tags:['Для мам','С детьми','45 мин'],what:'Тренировка для мамы, пока малыш рядом. Восстановление после родов.',includes:'Упражнения с весом малыша, восстановительные упражнения, игры для ребёнка.',who:'Для мам с детьми от 3 месяцев до 2 лет.'},
+  spina:{name:'Здоровая спина + Растяжка',tags:['Реабилитация','Спина','55 мин'],what:'Укрепление мышечного корсета и снятие напряжения со спины.',includes:'Упражнения для глубоких мышц спины, растяжка, релаксация.',who:'При болях в спине, сидячей работе, после беременности.'},
+  silovayapro:{name:'Силовая PRO',tags:['Продвинутый','Силовая','60 мин'],what:'Продвинутая силовая программа с прогрессивной нагрузкой.',includes:'Тяжёлые базовые движения, суперсеты, работа на гипертрофию.',who:'Для женщин с опытом силовых тренировок от 6 месяцев.'},
+  osanka:{name:'Осанка + Шпагат',tags:['Осанка','Гибкость','50 мин'],what:'Комплексная тренировка для красивой осанки и развития гибкости.',includes:'Укрепление спины, плечевого пояса, растяжка, работа на шпагат.',who:'Для всех, кто хочет красиво держать спину и стать гибче.'}
 };
 
-const TRAINER_PHONES={'+79001110001':'zosya','+79001110002':'ksyusha','+79001110003':'salma','+79001110004':'farida','+79001110005':'vika'};
+const TRAINER_PHONES={'79001110001':'zosya','79001110002':'ksyusha','79001110003':'salma','79001110004':'farida','79001110005':'vika'};
 
-/* ─ STATE ─ */
+const ABONEMENTS=[
+  {id:'single',label:'Разовое посещение',count:'1 занятие',price:'700 ₽',total:1},
+  {id:'ab8',label:'8 тренировок',count:'в месяц',price:'4 300 ₽',total:8},
+  {id:'ab12',label:'12 тренировок',count:'в месяц',price:'4 800 ₽',total:12},
+  {id:'ab16',label:'16 тренировок',count:'в месяц',price:'6 000 ₽',total:16}
+];
+
+/* STATE */
 let user=JSON.parse(localStorage.getItem('xk_user')||'null');
-let bookings=JSON.parse(localStorage.getItem('xk_bookings')||'[]');
-let reviews=JSON.parse(localStorage.getItem('xk_reviews')||'{}');
+let bookings=[];
+let reviews={};
 let pendingBook=null,activeTrainer=null,currentPage='home';
 
-/* ─ INIT ─ */
-window.addEventListener('load',()=>{
+/* ── FIRESTORE HELPERS ── */
+async function db(){
+  return new Promise(resolve=>{
+    if(window._firebaseReady)resolve(window._db);
+    else document.addEventListener('firebase-ready',()=>resolve(window._db),{once:true});
+  });
+}
+const fb=()=>window._fb;
+
+/* Пользователи */
+async function dbGetUser(phone){
+  const d=await db();
+  const snap=await fb().getDoc(fb().doc(d,'users',phone));
+  return snap.exists()?{id:snap.id,...snap.data()}:null;
+}
+async function dbSaveUser(phone,data){
+  const d=await db();
+  await fb().setDoc(fb().doc(d,'users',phone),data,{merge:true});
+}
+
+/* Записи */
+async function dbGetBookings(phone){
+  const d=await db();
+  const q=fb().query(fb().collection(d,'bookings'),fb().where('phone','==',phone));
+  const snap=await fb().getDocs(q);
+  return snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+}
+async function dbAddBooking(data){
+  const d=await db();
+  const ref=await fb().addDoc(fb().collection(d,'bookings'),{...data,createdAt:fb().serverTimestamp()});
+  return ref.id;
+}
+async function dbDeleteBooking(id){
+  const d=await db();
+  await fb().deleteDoc(fb().doc(d,'bookings',id));
+}
+
+/* Записи тренировки (для тренера) */
+async function dbGetTrainingBookings(trainerName,trainingName){
+  const d=await db();
+  const q=fb().query(fb().collection(d,'bookings'),fb().where('trainer','==',trainerName),fb().where('name','==',trainingName));
+  const snap=await fb().getDocs(q);
+  return snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+}
+
+/* Отзывы */
+async function dbGetReviews(trainerKey){
+  const d=await db();
+  const q=fb().query(fb().collection(d,'reviews'),fb().where('trainerKey','==',trainerKey));
+  const snap=await fb().getDocs(q);
+  return snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+}
+async function dbAddReview(data){
+  const d=await db();
+  await fb().addDoc(fb().collection(d,'reviews'),{...data,createdAt:fb().serverTimestamp()});
+}
+
+/* INIT */
+window.addEventListener('load',async()=>{
   renderNav();renderSchedule();renderTrainers();
   window.addEventListener('scroll',()=>{
     document.getElementById('nav').classList.toggle('scrolled',window.scrollY>10);
   });
   document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
+  // Если пользователь уже залогинен — подгружаем его записи из Firebase
+  if(user&&!user.isTrainer){
+    try{bookings=await dbGetBookings(user.phone);}catch(e){bookings=[];}
+  }
 });
 
-/* ─ NAV ─ */
+/* NAV */
 function renderNav(){
   const el=document.getElementById('nav-auth');
+  const mm=document.getElementById('mm-auth-section');
   if(user){
     const first=user.name.split(' ')[0];
     const pg=user.isTrainer?'tc':'lk';
-    el.innerHTML=`<button class="btn-outline" onclick="showPage('${pg}')">${first}</button><button class="btn-primary" onclick="doLogout()">Выйти</button>`;
+    el.innerHTML=`<button class="btn-outline" onclick="showPage('${pg}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:middle"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${first}</button><button class="btn-primary" onclick="doLogout()">Выйти</button>`;
+    mm.innerHTML=`
+      <div class="mm-section-label">Личный кабинет</div>
+      <button onclick="showPage('${pg}');closeMenu()">
+        <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Мой профиль
+      </button>
+      <button onclick="showPage('${pg}');closeMenu()">
+        <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Мои тренировки
+      </button>
+      <button onclick="doLogout();closeMenu()">
+        <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Выйти
+      </button>`;
   } else {
     el.innerHTML=`<button class="btn-outline" onclick="openAuth('login')">Войти</button><button class="btn-primary" onclick="openAuth('register')">Записаться</button>`;
+    mm.innerHTML=`
+      <button onclick="openAuth('login');closeMenu()">
+        <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+        Войти
+      </button>
+      <button onclick="openAuth('register');closeMenu()">
+        <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        Записаться
+      </button>`;
   }
 }
+
 function navTo(id){
-  if(currentPage!=='home')showPage('home');
-  setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},currentPage!=='home'?80:0);
+  if(currentPage!=='home'){showPage('home');setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:'smooth'}),80);}
+  else document.getElementById(id)?.scrollIntoView({behavior:'smooth'});
 }
 function toggleMenu(){document.getElementById('mobile-menu').classList.toggle('open')}
 function closeMenu(){document.getElementById('mobile-menu').classList.remove('open')}
 
-/* ─ PAGES ─ */
-function showPage(p){
-  ['home-page','trainer-page','lk-page','tc-page'].forEach(id=>{
-    document.getElementById(id).style.display='none';
-  });
+/* PAGES */
+async function showPage(p){
+  ['home-page','trainer-page','lk-page','tc-page'].forEach(id=>document.getElementById(id).style.display='none');
   currentPage=p;
-  if(p==='home')document.getElementById('home-page').style.display='block';
-  else if(p==='trainer')document.getElementById('trainer-page').style.display='block';
-  else if(p==='lk'){document.getElementById('lk-page').style.display='block';renderLK();}
-  else if(p==='tc'){document.getElementById('tc-page').style.display='block';renderTC();}
+  const map={'home':'home-page','trainer':'trainer-page','lk':'lk-page','tc':'tc-page'};
+  document.getElementById(map[p]).style.display='block';
+  if(p==='lk'){
+    // Обновляем записи из Firebase перед рендером
+    if(user&&!user.isTrainer){
+      try{bookings=await dbGetBookings(user.phone);}catch(e){}
+    }
+    renderLK();
+  }
+  if(p==='tc')renderTC();
   window.scrollTo(0,0);
 }
 
-/* ─ SCHEDULE ─ */
+/* PHONE FORMAT */
+function formatPhone(input){
+  let v=input.value.replace(/\D/g,'');
+  if(v.startsWith('7'))v=v.slice(1);
+  if(v.startsWith('8'))v=v.slice(1);
+  v=v.slice(0,10);
+  let out='';
+  if(v.length>0)out='('+v.slice(0,3);
+  if(v.length>=4)out+=') '+v.slice(3,6);
+  if(v.length>=7)out+='-'+v.slice(6,8);
+  if(v.length>=9)out+='-'+v.slice(8,10);
+  input.value=out;
+}
+function getRawPhone(val){return '7'+val.replace(/\D/g,'')}
+
+/* SCHEDULE */
 function renderSchedule(){
   Object.entries(SCHEDULE).forEach(([day,items])=>{
-    const el=document.getElementById('sched-'+day);
-    el.innerHTML=items.map(s=>`
+    document.getElementById('sched-'+day).innerHTML=items.map(s=>`
       <div class="sched-card" onclick="openTraining('${s.key}','${s.trainer}','${s.time}')">
         <span class="sched-time">${s.time}</span>
         <div><div class="sched-info-name">${s.name}</div><div class="sched-info-trainer">${s.trainer}</div></div>
@@ -1096,7 +869,7 @@ function switchDay(day,btn){
   document.getElementById('sched-'+day).classList.add('active');
 }
 
-/* ─ TRAINERS ─ */
+/* TRAINERS */
 function renderTrainers(){
   document.getElementById('trainers-grid').innerHTML=Object.entries(TRAINERS).map(([k,t])=>`
     <div class="trainer-card" onclick="openTrainerPage('${k}')">
@@ -1112,13 +885,12 @@ function renderTrainers(){
     </div>`).join('');
 }
 
-/* ─ TRAINER PAGE ─ */
-function openTrainerPage(key){
-  activeTrainer=key;
-  const t=TRAINERS[key];
+/* TRAINER PAGE */
+async function openTrainerPage(key){
+  activeTrainer=key;const t=TRAINERS[key];
   document.getElementById('tp-name').textContent=t.name;
   document.getElementById('tp-spec').textContent=t.spec;
-  document.getElementById('tp-avatar').innerHTML=`<div class="trainer-photo-placeholder" style="width:100%;height:100%;border-radius:var(--radius)"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width=".8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`;
+  document.getElementById('tp-avatar').innerHTML=`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width=".8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`;
   document.getElementById('tp-bio').textContent=t.bio;
   document.getElementById('tp-sched').innerHTML=t.schedule.map(s=>`
     <div class="tsched-item">
@@ -1127,17 +899,27 @@ function openTrainerPage(key){
       <span class="tsched-days">${s.days}</span>
       <button class="tsched-btn" onclick="openBookingModal('${s.name}','${t.name}','${s.time}','${s.days}')">Записаться</button>
     </div>`).join('');
-  const allReviews=[...t.reviews,...(reviews[key]||[])];
-  document.getElementById('tp-reviews').innerHTML=allReviews.length
-    ?allReviews.map(r=>`<div class="review-card"><div class="review-author">${r.author}</div><div class="review-body">${r.text}</div></div>`).join('')
-    :'<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
+  document.getElementById('tp-reviews').innerHTML='<div class="lk-empty-state" style="padding:20px">Загружаем отзывы...</div>';
   showPage('trainer');
+  // Загружаем отзывы из Firestore
+  try{
+    const fbReviews=await dbGetReviews(key);
+    reviews[key]=fbReviews;
+    const allR=[...t.reviews,...fbReviews];
+    document.getElementById('tp-reviews').innerHTML=allR.length
+      ?allR.map(r=>`<div class="review-card"><div class="review-author">${r.author}</div><div class="review-body">${r.text}</div></div>`).join('')
+      :'<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
+  }catch(e){
+    const allR=[...t.reviews,...(reviews[key]||[])];
+    document.getElementById('tp-reviews').innerHTML=allR.length
+      ?allR.map(r=>`<div class="review-card"><div class="review-author">${r.author}</div><div class="review-body">${r.text}</div></div>`).join('')
+      :'<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
+  }
 }
 
-/* ─ TRAINING MODAL ─ */
+/* TRAINING MODAL */
 function openTraining(key,trainer,time){
-  const t=TRAININGS[key];
-  if(!t)return;
+  const t=TRAININGS[key];if(!t)return;
   document.getElementById('training-content').innerHTML=`
     <h2 class="modal-title">${t.name}</h2>
     <div class="training-tags">${t.tags.map(tg=>`<span class="t-tag">${tg}</span>`).join('')}</div>
@@ -1145,11 +927,11 @@ function openTraining(key,trainer,time){
     <div class="t-block"><h4>Что входит</h4><p>${t.includes}</p></div>
     <div class="t-block"><h4>Для кого</h4><p>${t.who}</p></div>
     <div class="t-block"><h4>Тренер</h4><p>${trainer}</p></div>
-    <button class="form-submit" style="margin-top:20px" onclick="closeOverlay('ov-training');openBookingModal('${key}','${trainer}','${time}','')">Записаться</button>`;
+    <button class="form-submit" style="margin-top:20px" onclick="closeOv('ov-training');openBookingModal('${key}','${trainer}','${time}','')">Записаться</button>`;
   document.getElementById('ov-training').classList.add('open');
 }
 
-/* ─ BOOKING ─ */
+/* BOOKING */
 function openBookingModal(name,trainer,time,days){
   if(!user){openAuth('login');return;}
   pendingBook={name,trainer,time,days};
@@ -1158,78 +940,156 @@ function openBookingModal(name,trainer,time,days){
   document.getElementById('bk-sub').textContent=`Тренер: ${trainer}${time?' · '+time:''}${days?' · '+days:''}`;
   document.getElementById('ov-booking').classList.add('open');
 }
-function confirmBook(){
+async function confirmBook(){
   if(!pendingBook)return;
-  bookings.push({...pendingBook,id:Date.now()});
-  localStorage.setItem('xk_bookings',JSON.stringify(bookings));
-  closeOverlay('ov-booking');
-  toast('Вы записаны! Напоминание придёт в Telegram за 10 часов');
-  pendingBook=null;
+  const btn=document.querySelector('#ov-booking .form-submit');
+  if(btn){btn.disabled=true;btn.textContent='Записываем...';}
+  try{
+    const bookingData={...pendingBook,phone:user.phone,userName:user.name,createdAt:new Date().toISOString()};
+    const id=await dbAddBooking(bookingData);
+    bookings.push({...bookingData,id});
+    closeOv('ov-booking');
+    toast('Вы записаны! Напоминание придёт в Telegram за 10 часов');
+  }catch(e){
+    console.error(e);
+    // Fallback
+    const b={...pendingBook,id:Date.now(),phone:user.phone,userName:user.name};
+    bookings.push(b);
+    const key='xk_bookings_'+user.phone;
+    localStorage.setItem(key,JSON.stringify(bookings));
+    closeOv('ov-booking');
+    toast('Вы записаны!');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Подтвердить запись';}
+    pendingBook=null;
+  }
 }
 
-/* ─ REVIEWS ─ */
+/* REVIEWS */
 function openReviewModal(){
   if(!user){openAuth('login');return;}
   document.getElementById('rv-sub').textContent=`Отзыв о тренере ${TRAINERS[activeTrainer].name}`;
   document.getElementById('rv-text').value='';
   document.getElementById('ov-review').classList.add('open');
 }
-function submitReview(){
+async function submitReview(){
   const text=document.getElementById('rv-text').value.trim();
   if(!text){toast('Напишите отзыв');return;}
-  if(!reviews[activeTrainer])reviews[activeTrainer]=[];
-  reviews[activeTrainer].push({author:user.name.split(' ').slice(0,2).join(' '),text});
-  localStorage.setItem('xk_reviews',JSON.stringify(reviews));
-  closeOverlay('ov-review');
-  toast('Спасибо за отзыв!');
-  openTrainerPage(activeTrainer);
+  const btn=document.querySelector('#ov-review .form-submit');
+  if(btn){btn.disabled=true;btn.textContent='Отправляем...';}
+  try{
+    await dbAddReview({trainerKey:activeTrainer,author:user.name.split(' ').slice(0,2).join(' '),text,phone:user.phone});
+    if(!reviews[activeTrainer])reviews[activeTrainer]=[];
+    reviews[activeTrainer].push({author:user.name.split(' ').slice(0,2).join(' '),text});
+  }catch(e){
+    console.error(e);
+    if(!reviews[activeTrainer])reviews[activeTrainer]=[];
+    reviews[activeTrainer].push({author:user.name.split(' ').slice(0,2).join(' '),text});
+  }finally{if(btn){btn.disabled=false;btn.textContent='Отправить';}}
+  closeOv('ov-review');toast('Спасибо за отзыв!');openTrainerPage(activeTrainer);
 }
 
-/* ─ AUTH ─ */
+/* AUTH */
 function openAuth(view){switchAuth(view);document.getElementById('ov-auth').classList.add('open')}
 function switchAuth(v){
   document.getElementById('auth-login').style.display=v==='login'?'block':'none';
   document.getElementById('auth-register').style.display=v==='register'?'block':'none';
 }
-function doLogin(){
-  const phone=document.getElementById('li-phone').value.trim();
-  if(!phone){toast('Введите телефон');return;}
-  const trainerKey=TRAINER_PHONES[phone];
-  if(trainerKey){
-    user={name:TRAINERS[trainerKey].name,phone,isTrainer:true,trainerKey};
-    save();closeOverlay('ov-auth');renderNav();showPage('tc');return;
+async function doLogin(){
+  const raw=getRawPhone(document.getElementById('li-phone').value);
+  if(raw.length<11){toast('Введите номер телефона');return;}
+  // Проверяем тренерский аккаунт
+  const trKey=TRAINER_PHONES[raw];
+  if(trKey){
+    user={name:TRAINERS[trKey].name,phone:raw,isTrainer:true,trainerKey:trKey};
+    save();closeOv('ov-auth');renderNav();showPage('tc');return;
   }
-  const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
-  const found=users.find(u=>u.phone===phone);
-  if(!found){toast('Пользователь не найден');return;}
-  user=found;save();closeOverlay('ov-auth');renderNav();showPage('lk');
+  // Ищем в Firestore
+  try{
+    showLoading(true);
+    const found=await dbGetUser(raw);
+    if(!found){toast('Пользователь не найден. Зарегистрируйтесь.');showLoading(false);return;}
+    user={...found,phone:raw};
+    bookings=await dbGetBookings(raw);
+    save();closeOv('ov-auth');renderNav();showPage('lk');
+  }catch(e){
+    console.error(e);
+    // Fallback на localStorage если Firebase недоступен
+    const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
+    const found=users.find(u=>u.phone===raw);
+    if(!found){toast('Пользователь не найден');showLoading(false);return;}
+    user=found;bookings=JSON.parse(localStorage.getItem('xk_bookings_'+raw)||'[]');
+    save();closeOv('ov-auth');renderNav();showPage('lk');
+  }finally{showLoading(false);}
 }
-function doRegister(){
-  const name=document.getElementById('rg-name').value.trim();
-  const phone=document.getElementById('rg-phone').value.trim();
-  if(!name||!phone){toast('Заполните все поля');return;}
-  const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
-  if(users.find(u=>u.phone===phone)){toast('Этот номер уже зарегистрирован');return;}
-  user={name,phone,isTrainer:false};
-  users.push(user);
-  localStorage.setItem('xk_users',JSON.stringify(users));
-  save();closeOverlay('ov-auth');renderNav();toast('Добро пожаловать в КУЛЬТ!');showPage('lk');
-}
-function doLogout(){user=null;localStorage.removeItem('xk_user');renderNav();showPage('home')}
-function save(){localStorage.setItem('xk_user',JSON.stringify(user))}
 
-/* ─ LK ─ */
+async function doRegister(){
+  const name=document.getElementById('rg-name').value.trim();
+  const raw=getRawPhone(document.getElementById('rg-phone').value);
+  if(!name||raw.length<11){toast('Заполните все поля');return;}
+  try{
+    showLoading(true);
+    // Проверяем есть ли уже такой пользователь
+    const existing=await dbGetUser(raw);
+    if(existing){toast('Этот номер уже зарегистрирован');showLoading(false);return;}
+    const userData={name,phone:raw,isTrainer:false,abonement:null,createdAt:new Date().toISOString()};
+    await dbSaveUser(raw,userData);
+    user={...userData};
+    // Backup в localStorage
+    const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
+    users.push(userData);localStorage.setItem('xk_users',JSON.stringify(users));
+    save();closeOv('ov-auth');renderNav();toast('Добро пожаловать в КУЛЬТ!');showPage('lk');
+  }catch(e){
+    console.error(e);
+    // Fallback
+    const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
+    if(users.find(u=>u.phone===raw)){toast('Этот номер уже зарегистрирован');showLoading(false);return;}
+    user={name,phone:raw,isTrainer:false,abonement:null};
+    users.push(user);localStorage.setItem('xk_users',JSON.stringify(users));
+    save();closeOv('ov-auth');renderNav();toast('Добро пожаловать в КУЛЬТ!');showPage('lk');
+  }finally{showLoading(false);}
+}
+
+function doLogout(){user=null;bookings=[];localStorage.removeItem('xk_user');renderNav();showPage('home')}
+function save(){localStorage.setItem('xk_user',JSON.stringify(user))}
+function showLoading(on){
+  const btn=document.querySelector('#ov-auth .form-submit');
+  if(btn){btn.disabled=on;btn.textContent=on?'Загрузка...':btn.dataset.text||(btn.textContent||'Войти');}
+}
+
+/* LK */
 function renderLK(){
   if(!user)return;
   document.getElementById('lk-greeting').textContent=`Привет, ${user.name.split(' ')[0]}!`;
-  document.getElementById('lk-phone').textContent=user.phone;
-  const used=bookings.length,total=12;
-  document.getElementById('lk-ab').innerHTML=`
-    <div class="lk-ab-tag">Активный абонемент</div>
-    <div class="lk-ab-title">12 тренировок в месяц</div>
-    <div class="lk-ab-track"><div class="lk-ab-fill" style="width:${Math.min(100,Math.round(used/total*100))}%"></div></div>
-    <div class="lk-ab-meta">Использовано ${used} из ${total} занятий</div>`;
-  document.getElementById('lk-list').innerHTML=bookings.length
+  document.getElementById('lk-phone').textContent='+'+user.phone;
+
+  // header badge
+  const abEl=document.getElementById('lk-header-ab');
+  if(user.abonement){
+    const ab=ABONEMENTS.find(a=>a.id===user.abonement);
+    abEl.innerHTML=ab?`<div class="lk-ab-badge"><div class="lk-ab-badge-dot"></div><span class="lk-ab-badge-text">${ab.label}</span></div>`:'';
+  } else abEl.innerHTML='';
+
+  // sidebar
+  const sb=document.getElementById('lk-sidebar');
+  if(user.abonement){
+    const ab=ABONEMENTS.find(a=>a.id===user.abonement);
+    const used=bookings.length,total=ab?ab.total:1;
+    sb.innerHTML=`
+      <div class="lk-ab-active">
+        <div class="lk-ab-tag">Активный абонемент</div>
+        <div class="lk-ab-title">${ab?ab.label:'—'}</div>
+        <div class="lk-ab-track"><div class="lk-ab-fill" style="width:${Math.min(100,Math.round(used/total*100))}%"></div></div>
+        <div class="lk-ab-meta">Использовано ${used} из ${total} занятий</div>
+        <button class="lk-ab-change" onclick="renderAbSelect()">Сменить абонемент</button>
+      </div>`;
+  } else {
+    sb.innerHTML=renderAbSelectHTML();
+  }
+
+  // bookings
+  const list=document.getElementById('lk-list');
+  list.innerHTML=bookings.length
     ?bookings.map((b,i)=>`
       <div class="lk-booking-row">
         <div class="lk-booking-time">${b.time||'—'}</div>
@@ -1238,31 +1098,89 @@ function renderLK(){
       </div>`).join('')
     :'<div class="lk-empty-state">Вы ещё не записаны ни на одну тренировку.<br>Перейдите в расписание и выберите занятие.</div>';
 }
-function cancelBook(i){bookings.splice(i,1);localStorage.setItem('xk_bookings',JSON.stringify(bookings));renderLK();toast('Запись отменена')}
 
-/* ─ TC ─ */
-function renderTC(){
+function renderAbSelectHTML(selectedId){
+  return `<div class="ab-select-card">
+    <div class="ab-select-title">Выбери абонемент</div>
+    <div class="ab-select-sub">Выбери подходящий формат занятий</div>
+    <div class="ab-options">
+      ${ABONEMENTS.map(a=>`
+        <div class="ab-option${selectedId===a.id?' selected':''}" onclick="selectAb('${a.id}',this)">
+          <div class="ab-option-left">
+            <div class="ab-radio"><div class="ab-radio-dot"></div></div>
+            <div><div class="ab-option-name">${a.label}</div><div class="ab-option-count">${a.count}</div></div>
+          </div>
+          <div class="ab-option-price">${a.price}</div>
+        </div>`).join('')}
+    </div>
+    <button class="ab-save-btn" onclick="saveAb()">Выбрать абонемент</button>
+  </div>`;
+}
+
+let pendingAbId=null;
+function renderAbSelect(){document.getElementById('lk-sidebar').innerHTML=renderAbSelectHTML(user.abonement);pendingAbId=user.abonement}
+function selectAb(id,el){
+  pendingAbId=id;
+  document.querySelectorAll('.ab-option').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+async function saveAb(){
+  if(!pendingAbId){toast('Выберите абонемент');return;}
+  user.abonement=pendingAbId;
+  save();
+  try{
+    await dbSaveUser(user.phone,{abonement:pendingAbId});
+  }catch(e){console.error(e);}
+  // Backup localStorage
+  const users=JSON.parse(localStorage.getItem('xk_users')||'[]');
+  const idx=users.findIndex(u=>u.phone===user.phone);
+  if(idx>=0)users[idx]=user;
+  localStorage.setItem('xk_users',JSON.stringify(users));
+  renderLK();toast('Абонемент выбран!');
+}
+async function cancelBook(i){
+  const b=bookings[i];
+  try{
+    if(b.id&&typeof b.id==='string')await dbDeleteBooking(b.id);
+  }catch(e){console.error(e);}
+  bookings.splice(i,1);
+  renderLK();toast('Запись отменена');
+}
+
+/* TC */
+async function renderTC(){
   if(!user||!user.isTrainer)return;
   const t=TRAINERS[user.trainerKey];
   document.getElementById('tc-greeting').textContent=t.name;
   document.getElementById('tc-role').textContent=t.spec;
-  const demo=[{name:'Иванова Мария Петровна',phone:'+7 (912) 345-67-89'},{name:'Соколова Анна Игоревна',phone:'+7 (917) 234-56-78'},{name:'Петрова Елена Сергеевна',phone:'+7 (918) 765-43-21'}];
-  document.getElementById('tc-list').innerHTML=t.schedule.map((s,i)=>`
+  const list=document.getElementById('tc-list');
+  list.innerHTML='<div class="lk-empty-state">Загружаем данные...</div>';
+  // Загружаем реальных клиентов из Firestore
+  const scheduleWithClients=await Promise.all(t.schedule.map(async(s)=>{
+    try{
+      const clients=await dbGetTrainingBookings(t.name,s.name);
+      return{...s,clients};
+    }catch(e){return{...s,clients:[]};}
+  }));
+  list.innerHTML=scheduleWithClients.map((s,i)=>`
     <div class="tc-group">
       <div class="tc-group-header" onclick="toggleTC(${i})">
         <span class="tc-group-time">${s.time}</span>
         <div><div class="tc-group-name">${s.name}</div><div class="tc-group-days">${s.days}</div></div>
-        <span class="tc-group-count">${demo.length} клиентов</span>
+        <span class="tc-group-count">${s.clients.length} клиентов</span>
       </div>
       <div class="tc-clients-list" id="tc-cl-${i}">
-        ${demo.map(c=>`<div class="tc-client"><span class="tc-client-name">${c.name}</span><span class="tc-client-phone">${c.phone}</span></div>`).join('')}
+        ${s.clients.length
+          ?s.clients.map(c=>`<div class="tc-client"><span class="tc-client-name">${c.userName||'—'}</span><span class="tc-client-phone">+${c.phone||''}</span></div>`).join('')
+          :'<div style="padding:16px 24px;font-size:14px;color:var(--ink-muted)">Записей пока нет</div>'
+        }
       </div>
     </div>`).join('');
 }
 function toggleTC(i){document.getElementById('tc-cl-'+i).classList.toggle('open')}
 
-/* ─ UTILS ─ */
-function closeOverlay(id){document.getElementById(id).classList.remove('open')}
+/* UTILS */
+function closeOv(id){document.getElementById(id).classList.remove('open')}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),3200)}
 </script>
 </body>
