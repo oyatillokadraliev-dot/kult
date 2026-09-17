@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>КУЛЬТ — женский спортивный клуб</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=DM+Sans:wght@300;400;500&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <span class="nav-logo" onclick="showPage('home')"><img src="" id="nav-logo-img" alt="КУЛЬТ"></span>
+  <ul class="nav-links">
+    <li><a onclick="navTo('schedule')">Расписание</a></li>
+    <li><a onclick="navTo('trainers')">Тренеры</a></li>
+    <li><a onclick="navTo('prices')">Абонементы</a></li>
+    <li><a onclick="navTo('contacts')">Контакты</a></li>
+  </ul>
+  <div class="nav-actions" id="nav-auth"></div>
+  <button class="burger" onclick="toggleMenu()" aria-label="Меню"><span></span><span></span><span></span></button>
+</nav>
+
+<div class="mobile-menu" id="mobile-menu">
+  <a onclick="navTo('schedule');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    Расписание
+  </a>
+  <a onclick="navTo('trainers');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Тренеры
+  </a>
+  <a onclick="navTo('prices');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+    Абонементы
+  </a>
+  <a onclick="navTo('contacts');closeMenu()">
+    <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    Контакты
+  </a>
+  <div class="mm-divider"></div>
+  <div id="mm-auth-section"></div>
+</div>
+
+<!-- HOME -->
+<div id="home-page">
+<section id="hero">
+  <div class="hero-bg-photo" id="hero-bg-photo"></div>
+  <div class="hero-bg-overlay"></div>
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+  <div class="hero-inner">
+    <div class="hero-tag">Женский спортивный клуб · Астрахань</div>
+    <h1 class="hero-title">
+      <span>К</span><span>У</span><span>Л</span><span>Ь</span><span>Т</span>
+      <span class="hero-signature">sport</span>
+    </h1>
+    <p class="hero-sub">Про женское тело, движение и любовь к себе. Про заботу о себе, привычки и комьюнити, в котором хочется остаться.</p>
+    <div class="hero-cta-row">
+      <button class="hero-btn-main" onclick="navTo('schedule')">Записаться на тренировку</button>
+      <button class="hero-btn-ghost" onclick="navTo('trainers')">Познакомиться с тренерами</button>
+    </div>
+    <div class="hero-badges">
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>Лучшие тренеры</b> — сертифицированные профессионалы с опытом от 3 лет</span>
+      </div>
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>9 направлений</b> — TRX, силовые, растяжка, женское здоровье и не только</span>
+      </div>
+      <div class="hero-badge">
+        <div class="hero-badge-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <span class="hero-badge-text"><b>Только для женщин</b> — безопасная атмосфера без лишних взглядов</span>
+      </div>
+    </div>
+  </div>
+  <div class="hero-scroll">
+    <div class="hero-scroll-text">Расписание</div>
+    <div class="hero-scroll-track"><div class="hero-scroll-dot"></div></div>
+  </div>
+</section>
+
+<!-- SCHEDULE -->
+<section class="section" id="schedule">
+  <div class="container">
+    <div class="section-heading">
+      <h2>Расписание</h2>
+      <p>Выбери день, направление и тренера — и запишись прямо здесь</p>
+    </div>
+    <div class="day-tabs-wrap">
+      <button class="day-tab active" onclick="switchDay('mon',this)">Понедельник</button>
+      <button class="day-tab" onclick="switchDay('tue',this)">Вторник</button>
+      <button class="day-tab" onclick="switchDay('wed',this)">Среда</button>
+      <button class="day-tab" onclick="switchDay('thu',this)">Четверг</button>
+      <button class="day-tab" onclick="switchDay('fri',this)">Пятница</button>
+      <button class="day-tab" onclick="switchDay('sat',this)">Суббота</button>
+    </div>
+    <div id="sched-mon" class="sched-grid active"></div>
+    <div id="sched-tue" class="sched-grid"></div>
+    <div id="sched-wed" class="sched-grid"></div>
+    <div id="sched-thu" class="sched-grid"></div>
+    <div id="sched-fri" class="sched-grid"></div>
+    <div id="sched-sat" class="sched-grid"></div>
+  </div>
+</section>
+
+<!-- TRAINERS -->
+<section class="section" id="trainers" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-heading">
+      <h2>Наши тренеры</h2>
+      <p>Профессионалы, которые вдохновляют и помогают расти</p>
+    </div>
+    <div class="trainers-grid" id="trainers-grid"></div>
+  </div>
+</section>
+
+<!-- PRICES -->
+<section class="section" id="prices">
+  <div class="container">
+    <div class="section-heading center">
+      <h2>Абонементы</h2>
+      <p>Выбери формат, который подходит твоему ритму жизни</p>
+    </div>
+    <div class="prices-grid">
+      <div class="price-card">
+        <div class="price-sessions">Разовое посещение</div>
+        <div class="price-amount"><span class="price-currency">₽</span>700</div>
+        <div class="price-per">одно занятие</div>
+        <div class="price-note">Попробуй без обязательств</div>
+      </div>
+      <div class="price-card">
+        <div class="price-sessions">8 тренировок в месяц</div>
+        <div class="price-amount"><span class="price-currency">₽</span>4 300</div>
+        <div class="price-per">537 ₽ за занятие</div>
+        <div class="price-note">Для тех, кто тренируется 2 раза в неделю</div>
+      </div>
+      <div class="price-card featured">
+        <div class="price-tag-popular">Популярный</div>
+        <div class="price-sessions">12 тренировок в месяц</div>
+        <div class="price-amount"><span class="price-currency">₽</span>4 800</div>
+        <div class="price-per">400 ₽ за занятие</div>
+        <div class="price-note">Оптимальный результат — 3 раза в неделю</div>
+      </div>
+      <div class="price-card">
+        <div class="price-sessions">16 тренировок в месяц</div>
+        <div class="price-amount"><span class="price-currency">₽</span>6 000</div>
+        <div class="price-per">375 ₽ за занятие</div>
+        <div class="price-note">Максимальный прогресс — 4 раза в неделю</div>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:28px;font-size:13px;font-weight:300;color:var(--ink-muted)">Персональные тренировки — по договорённости с тренером</p>
+  </div>
+</section>
+
+<!-- CONTACTS -->
+<section class="section" id="contacts">
+  <div class="container">
+    <div class="section-heading"><h2>Как нас найти</h2><p>Ждём тебя в нашей студии</p></div>
+    <div class="contacts-grid">
+      <div>
+        <div class="contact-item">
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div><div class="contact-label">Адрес</div><div class="contact-value">ул. Кремлёвская, 1, ЖК Кремлёвский, Астрахань</div></div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.73a16 16 0 0 0 6 6z"/></svg></div>
+          <div><div class="contact-label">Телефон</div><a href="tel:+79897949411" class="contact-value">+7 (989) 794-94-11</a></div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div><div class="contact-label">Режим работы</div><div class="contact-value">Пн – Сб, с 9:00 до 20:00</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="contacts-label-white">Мы в соцсетях</div>
+        <div class="socials-grid">
+          <a href="https://www.instagram.com/fizkult_ast" target="_blank" class="social-btn">
+            <div class="social-icon-wrap" style="background:rgba(201,169,110,.2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="var(--gold)" stroke="none"/></svg></div>
+            <span class="social-btn-name">Instagram</span>
+          </a>
+          <a href="https://vk.ru/fizkult_ast_30" target="_blank" class="social-btn">
+            <div class="social-icon-wrap" style="background:rgba(93,131,177,.2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5d83b1" stroke-width="1.5"><ellipse cx="12" cy="12" rx="10" ry="10"/></svg></div>
+            <span class="social-btn-name">ВКонтакте</span>
+          </a>
+          <a href="https://t.me/+79897949411" target="_blank" class="social-btn">
+            <div class="social-icon-wrap" style="background:rgba(41,182,246,.15)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#29b6f6" stroke-width="1.5"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg></div>
+            <span class="social-btn-name">Telegram</span>
+          </a>
+          <a href="https://wa.me/79897949411" target="_blank" class="social-btn">
+            <div class="social-icon-wrap" style="background:rgba(72,187,120,.15)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#48bb78" stroke-width="1.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
+            <span class="social-btn-name">WhatsApp</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</div><!-- /home -->
+
+<!-- TRAINER PAGE -->
+<div id="trainer-page">
+  <div class="trainer-detail-hero">
+    <div class="trainer-detail-inner">
+      <div>
+        <button class="back-link" onclick="showPage('home');setTimeout(()=>navTo('trainers'),60)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M5 12l7 7M5 12l7-7"/></svg>
+          Все тренеры
+        </button>
+        <div id="tp-avatar" class="trainer-detail-avatar"></div>
+      </div>
+      <div><div class="trainer-detail-name" id="tp-name"></div><div class="trainer-detail-spec" id="tp-spec"></div></div>
+    </div>
+  </div>
+  <div class="trainer-detail-body">
+    <div class="trainer-bio-text" id="tp-bio"></div>
+    <div class="detail-section-title">Расписание</div>
+    <div class="trainer-sched-list" id="tp-sched"></div>
+    <div class="detail-section-title">Отзывы</div>
+    <div class="reviews-list" id="tp-reviews"></div>
+    <button class="btn-add-review" onclick="openReviewModal()">Оставить отзыв</button>
+  </div>
+</div>
+
+<!-- LK -->
+<div id="lk-page">
+  <div class="lk-header">
+    <div class="lk-bg-photo" id="lk-bg-photo"></div>
+    <div class="lk-bg-overlay"></div>
+    <div class="lk-header-inner">
+      <div>
+        <div class="lk-greeting" id="lk-greeting"></div>
+        <div class="lk-phone-label" id="lk-phone"></div>
+      </div>
+      <div class="lk-header-right" id="lk-header-ab"></div>
+    </div>
+  </div>
+  <div class="lk-body">
+    <div class="lk-grid">
+      <div>
+        <div class="lk-section-label">Мои тренировки</div>
+        <div class="lk-bookings-list" id="lk-list"></div>
+        <button class="btn-outline" onclick="showPage('home');setTimeout(()=>navTo('schedule'),60)">Смотреть расписание</button>
+      </div>
+      <div id="lk-sidebar"></div>
+    </div>
+    <div id="lk-telegram-banner"></div>
+  </div>
+</div>
+
+<!-- TC -->
+<div id="tc-page">
+  <div class="tc-header">
+    <div class="lk-bg-photo" id="tc-bg-photo"></div>
+    <div class="lk-bg-overlay"></div>
+    <div class="tc-header-inner">
+    <div class="tc-greeting" id="tc-greeting"></div>
+    <div class="tc-role" id="tc-role"></div>
+  </div></div>
+  <div class="tc-body">
+    <div class="lk-section-label">Мои тренировки</div>
+    <div id="tc-list"></div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="overlay" id="ov-auth">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeOv('ov-auth')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <div id="auth-login">
+      <h2 class="modal-title">Войти</h2>
+      <p class="modal-sub">Введите номер телефона, который указывали при регистрации</p>
+      <div class="form-group">
+        <label class="form-label">Телефон</label>
+        <div class="phone-wrap"><span class="phone-prefix">+7</span><input class="form-input with-prefix" type="tel" id="li-phone" placeholder="(___) ___-__-__" oninput="formatPhone(this)"></div>
+      </div>
+      <button class="form-submit" onclick="doLogin()">Войти</button>
+      <div class="modal-switch">Нет аккаунта? <a onclick="switchAuth('register')">Зарегистрироваться</a></div>
+    </div>
+    <div id="auth-register" style="display:none">
+      <h2 class="modal-title">Регистрация</h2>
+      <p class="modal-sub">Создайте аккаунт, чтобы записываться на тренировки</p>
+      <div class="form-group"><label class="form-label">Имя и фамилия</label><input class="form-input" type="text" id="rg-name" placeholder="Мария Иванова"></div>
+      <div class="form-group">
+        <label class="form-label">Телефон</label>
+        <div class="phone-wrap"><span class="phone-prefix">+7</span><input class="form-input with-prefix" type="tel" id="rg-phone" placeholder="(___) ___-__-__" oninput="formatPhone(this)"></div>
+      </div>
+      <button class="form-submit" onclick="doRegister()">Создать аккаунт</button>
+      <div class="modal-switch">Уже есть аккаунт? <a onclick="switchAuth('login')">Войти</a></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-training">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeOv('ov-training')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <div id="training-content"></div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-booking">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeOv('ov-booking')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <h2 class="modal-title" id="bk-title">Запись</h2>
+    <p class="modal-sub" id="bk-sub"></p>
+    <button class="form-submit" onclick="confirmBook()">Подтвердить запись</button>
+  </div>
+</div>
+
+<div class="overlay" id="ov-review">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeOv('ov-review')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <h2 class="modal-title">Оставить отзыв</h2>
+    <p class="modal-sub" id="rv-sub"></p>
+    <div class="review-form">
+      <div class="form-group"><label class="form-label">Ваш отзыв</label><textarea id="rv-text" placeholder="Поделитесь впечатлениями..."></textarea></div>
+      <button class="form-submit" onclick="submitReview()">Отправить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+<!-- Site images (base64) -->
+<script src="js/images-data.js"></script>
+<!-- Firebase -->
+<script type="module" src="js/firebase-init.js"></script>
+<!-- Main app logic -->
+<script src="js/app.js"></script>
+</body>
+</html>
