@@ -1,0 +1,12 @@
+# Никогда не добавлять в Git!
+.env
+node_modules/
+*.log
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# OS
+.DS_Store
+Thumbs.db

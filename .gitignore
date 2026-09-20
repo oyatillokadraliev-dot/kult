@@ -1,0 +1,19 @@
+# Секреты — НИКОГДА в Git
+.env
+bot/.env
+
+# Зависимости
+node_modules/
+bot/node_modules/
+
+# Логи
+*.log
+npm-debug.log*
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
