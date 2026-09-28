@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>КУЛЬТ — Администратор</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#F8F6F3;--surface:#EDE8E1;--ink:#1C1917;--muted:#78716C;--forest:#332E28;--gold:#C9A96E;--white:#fff;--red:#dc2626;--green:#16a34a;--border:rgba(28,25,23,.12);--r:12px;--sh:0 2px 12px rgba(28,25,23,.08)}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+/* LOGIN */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.login-box{background:var(--white);border-radius:var(--r);padding:48px 40px;width:100%;max-width:400px;box-shadow:var(--sh);text-align:center}
+.login-logo{font-family:'Playfair Display',serif;font-size:32px;margin-bottom:4px}
+.login-sub{font-size:14px;color:var(--muted);margin-bottom:32px}
+/* ADMIN */
+#admin-screen{display:none}
+.topbar{background:var(--forest);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-logo{font-family:'Playfair Display',serif;font-size:18px;color:var(--white)}
+.layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 60px)}
+.sidebar{background:var(--white);border-right:1px solid var(--border);padding:16px 0}
+.nav-btn{display:flex;align-items:center;gap:10px;padding:12px 24px;font-size:14px;color:var(--muted);cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:all .15s}
+.nav-btn:hover{background:var(--bg);color:var(--ink)}
+.nav-btn.active{background:var(--bg);color:var(--forest);font-weight:500;border-right:3px solid var(--forest)}
+.sep{height:1px;background:var(--border);margin:8px 0}
+.content{padding:32px;overflow-y:auto}
+/* SECTIONS */
+.sec{display:none}.sec.active{display:block}
+.sec-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.sec-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:500}
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.stat-n{font-family:'Playfair Display',serif;font-size:38px;color:var(--forest);line-height:1}
+.stat-l{font-size:12px;color:var(--muted);margin-top:4px}
+/* CARDS */
+.card{background:var(--white);border-radius:var(--r);padding:24px;margin-bottom:16px;border:1px solid var(--border)}
+.card-title{font-size:14px;font-weight:500;color:var(--forest);margin-bottom:16px}
+/* FORM */
+.row{display:grid;gap:14px;margin-bottom:14px}
+.row-2{grid-template-columns:1fr 1fr}
+.row-1{grid-template-columns:1fr}
+.fg{display:flex;flex-direction:column;gap:5px}
+label{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+input,select,textarea{font-family:'DM Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--bg);border:1.5px solid transparent;padding:10px 14px;border-radius:8px;outline:none;transition:border-color .2s;width:100%}
+input:focus,select:focus,textarea:focus{background:var(--white);border-color:var(--forest)}
+textarea{resize:vertical;min-height:90px}
+/* BTNS */
+.btn{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:10px 22px;border-radius:100px;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.btn-p{background:var(--forest);color:var(--white)}.btn-p:hover{background:var(--ink)}
+.btn-g{background:transparent;color:var(--muted);border:1.5px solid var(--border)}.btn-g:hover{color:var(--ink);border-color:var(--ink)}
+.btn-d{background:rgba(220,38,38,.08);color:var(--red)}.btn-d:hover{background:rgba(220,38,38,.16)}
+.btn-sm{padding:7px 14px;font-size:12px}
+.btn-logout{font-size:13px;color:rgba(255,255,255,.6);background:none;border:1px solid rgba(255,255,255,.2);padding:7px 16px;border-radius:100px;cursor:pointer}
+.btn-logout:hover{color:var(--white);border-color:rgba(255,255,255,.5)}
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 14px;border-bottom:2px solid var(--border)}
+.tbl td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
+.tbl tr:hover td{background:var(--bg)}
+/* BADGES */
+.bdg{font-size:11px;font-weight:500;padding:3px 10px;border-radius:100px}
+.bdg-g{background:rgba(22,163,74,.1);color:var(--green)}
+.bdg-r{background:rgba(220,38,38,.1);color:var(--red)}
+.bdg-y{background:rgba(201,169,110,.2);color:#9a7a3a}
+/* SCHEDULE */
+.slot-row{display:grid;grid-template-columns:80px 1fr 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:6px}
+/* TABS */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--surface);padding:4px;border-radius:100px;width:fit-content}
+.tab{font-size:13px;font-weight:500;padding:8px 20px;border-radius:100px;border:none;background:none;cursor:pointer;color:var(--muted);transition:all .2s}
+.tab.active{background:var(--white);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+/* MODAL */
+.ov{display:none;position:fixed;inset:0;background:rgba(28,25,23,.5);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.ov.open{display:flex}
+.modal{background:var(--white);border-radius:var(--r);padding:32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative}
+.modal-title{font-family:'Playfair Display',serif;font-size:22px;margin-bottom:20px}
+.modal-close{position:absolute;top:20px;right:20px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)}
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--forest);color:var(--white);padding:13px 24px;border-radius:100px;font-size:13px;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:999}
+.toast.show{opacity:1;transform:translateY(0)}
+@media(max-width:768px){.layout{grid-template-columns:1fr}.sidebar{display:none}.stats{grid-template-columns:repeat(2,1fr)}.row-2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">КУЛЬТ</div>
+    <div class="login-sub">Панель администратора</div>
+    <div class="fg" style="margin-bottom:12px;text-align:left">
+      <label>Пароль</label>
+      <input type="password" id="pw" placeholder="Введите пароль" onkeydown="if(event.key==='Enter')login()">
+    </div>
+    <button class="btn btn-p" style="width:100%;justify-content:center" onclick="login()">Войти</button>
+    <div id="login-err" style="color:var(--red);font-size:13px;margin-top:10px;display:none">Неверный пароль</div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin-screen">
+  <div class="topbar">
+    <span class="topbar-logo">КУЛЬТ · Администратор</span>
+    <button class="btn-logout" onclick="logout()">Выйти</button>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="nav-btn active" onclick="go('dashboard',this)">📊 Главная</button>
+      <button class="nav-btn" onclick="go('schedule',this)">📅 Расписание</button>
+      <button class="nav-btn" onclick="go('trainers',this)">👩 Тренеры</button>
+      <button class="nav-btn" onclick="go('clients',this)">👥 Клиенты</button>
+      <button class="nav-btn" onclick="go('prices',this)">💳 Цены</button>
+      <div class="sep"></div>
+      <button class="nav-btn" onclick="go('settings',this)">⚙️ Настройки</button>
+    </aside>
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <div class="sec active" id="sec-dashboard">
+        <div class="sec-title" style="margin-bottom:20px">Главная</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-n" id="s-clients">—</div><div class="stat-l">Клиентов</div></div>
+          <div class="stat"><div class="stat-n" id="s-today">—</div><div class="stat-l">Записей сегодня</div></div>
+          <div class="stat"><div class="stat-n" id="s-trainers">—</div><div class="stat-l">Тренеров</div></div>
+          <div class="stat"><div class="stat-n" id="s-ab">—</div><div class="stat-l">С абонементом</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Последние записи</div>
+          <table class="tbl"><thead><tr><th>Клиент</th><th>Тренировка</th><th>Тренер</th><th>Дата</th><th>Статус</th></tr></thead>
+          <tbody id="dash-bookings"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Загрузка...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- SCHEDULE -->
+      <div class="sec" id="sec-schedule">
+        <div class="sec-head">
+          <div class="sec-title">Расписание</div>
+          <button class="btn btn-p" onclick="openSlot()">+ Добавить</button>
+        </div>
+        <div class="tabs">
+          <button class="tab active" onclick="schedTab('mwf',this)">Пн / Ср / Пт</button>
+          <button class="tab" onclick="schedTab('tts',this)">Вт / Чт / Сб</button>
+        </div>
+        <div id="sched-mwf"></div>
+        <div id="sched-tts" style="display:none"></div>
+      </div>
+
+      <!-- TRAINERS -->
+      <div class="sec" id="sec-trainers">
+        <div class="sec-head">
+          <div class="sec-title">Тренеры</div>
+          <button class="btn btn-p" onclick="openTrainer()">+ Добавить</button>
+        </div>
+        <div id="trainers-list"></div>
+      </div>
+
+      <!-- CLIENTS -->
+      <div class="sec" id="sec-clients">
+        <div class="sec-head">
+          <div class="sec-title">Клиенты</div>
+          <button class="btn btn-p" onclick="openClient()">+ Добавить</button>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <input id="cl-search" placeholder="Поиск по имени или телефону..." oninput="filterClients()" style="max-width:340px">
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table class="tbl"><thead><tr><th>Имя</th><th>Телефон</th><th>Абонемент</th><th>Telegram</th><th>Изменить аб.</th></tr></thead>
+          <tbody id="clients-tbody"></tbody></table>
+        </div>
+      </div>
+
+      <!-- PRICES -->
+      <div class="sec" id="sec-prices">
+        <div class="sec-title" style="margin-bottom:20px">Цены на абонементы</div>
+        <div class="card">
+          <div id="prices-form"></div>
+          <button class="btn btn-p" style="margin-top:8px" onclick="savePrices()">Сохранить цены</button>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="sec" id="sec-settings">
+        <div class="sec-title" style="margin-bottom:20px">Настройки</div>
+        <div class="card">
+          <div class="card-title">Контакты</div>
+          <div class="row row-1"><div class="fg"><label>Адрес</label><input id="s-addr"></div></div>
+          <div class="row row-2">
+            <div class="fg"><label>Телефон</label><input id="s-phone"></div>
+            <div class="fg"><label>Часы работы</label><input id="s-hours"></div>
+          </div>
+          <button class="btn btn-p" onclick="saveContacts()">Сохранить</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Ссылки на соцсети</div>
+          <div class="row row-2">
+            <div class="fg"><label>Instagram</label><input id="s-ig" placeholder="https://instagram.com/..."></div>
+            <div class="fg"><label>ВКонтакте</label><input id="s-vk" placeholder="https://vk.com/..."></div>
+          </div>
+          <div class="row row-2">
+            <div class="fg"><label>Telegram</label><input id="s-tg" placeholder="https://t.me/..."></div>
+            <div class="fg"><label>WhatsApp</label><input id="s-wa" placeholder="https://wa.me/..."></div>
+          </div>
+          <button class="btn btn-p" onclick="saveSocials()">Сохранить</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Смена пароля</div>
+          <div class="row row-2">
+            <div class="fg"><label>Новый пароль</label><input id="pw1" type="password"></div>
+            <div class="fg"><label>Повторите</label><input id="pw2" type="password"></div>
+          </div>
+          <button class="btn btn-p" onclick="changePw()">Изменить</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- MODAL SLOT -->
+<div class="ov" id="m-slot">
+  <div class="modal">
+    <button class="modal-close" onclick="closeM('m-slot')">×</button>
+    <div class="modal-title" id="m-slot-title">Добавить тренировку</div>
+    <input type="hidden" id="slot-id">
+    <div class="row row-2">
+      <div class="fg"><label>Название</label><input id="sl-name" placeholder="TRX / Силовая..."></div>
+      <div class="fg"><label>Тренер</label><select id="sl-trainer"><option value="">— выбери —</option></select></div>
+    </div>
+    <div class="row row-2">
+      <div class="fg"><label>Время</label><input id="sl-time" type="time"></div>
+      <div class="fg"><label>Дни</label>
+        <select id="sl-group">
+          <option value="mwf">Пн / Ср / Пт</option>
+          <option value="tts">Вт / Чт / Сб</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="saveSlot()">Сохранить</button>
+      <button class="btn btn-g" onclick="closeM('m-slot')">Отмена</button>
+      <button class="btn btn-d btn-sm" id="del-slot" style="margin-left:auto;display:none" onclick="delSlot()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TRAINER -->
+<div class="ov" id="m-trainer">
+  <div class="modal">
+    <button class="modal-close" onclick="closeM('m-trainer')">×</button>
+    <div class="modal-title" id="m-trainer-title">Добавить тренера</div>
+    <input type="hidden" id="tr-id">
+    <div class="row row-2">
+      <div class="fg"><label>Имя</label><input id="tr-name" placeholder="Имя тренера"></div>
+      <div class="fg"><label>Телефон для входа</label><input id="tr-phone" placeholder="79001234567"></div>
+    </div>
+    <div class="row row-1">
+      <div class="fg"><label>Специализация</label><input id="tr-spec" placeholder="TRX · Силовая · Crossfit"></div>
+    </div>
+    <div class="row row-1">
+      <div class="fg"><label>О тренере</label><textarea id="tr-bio" placeholder="Опыт, сертификаты, миссия..."></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="saveTrainer()">Сохранить</button>
+      <button class="btn btn-g" onclick="closeM('m-trainer')">Отмена</button>
+      <button class="btn btn-d btn-sm" id="del-trainer" style="margin-left:auto;display:none" onclick="delTrainer()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENT -->
+<div class="ov" id="m-client">
+  <div class="modal">
+    <button class="modal-close" onclick="closeM('m-client')">×</button>
+    <div class="modal-title">Добавить клиента</div>
+    <div class="row row-2">
+      <div class="fg"><label>Имя и фамилия</label><input id="cl-name" placeholder="Мария Иванова"></div>
+      <div class="fg"><label>Телефон</label><input id="cl-phone" placeholder="79001234567"></div>
+    </div>
+    <div class="row row-1">
+      <div class="fg"><label>Абонемент</label>
+        <select id="cl-ab">
+          <option value="">— без абонемента —</option>
+          <option value="single">Разовое (700 ₽)</option>
+          <option value="ab8">8 тренировок (4 300 ₽)</option>
+          <option value="ab12">12 тренировок (4 800 ₽)</option>
+          <option value="ab16">16 тренировок (6 000 ₽)</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-p" onclick="saveClient()">Добавить</button>
+      <button class="btn btn-g" onclick="closeM('m-client')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:"AIzaSyA9AByymeqj8RFy1dhitLPpifoXTf8wLF8",
+  authDomain:"fiz-cult.firebaseapp.com",
+  projectId:"fiz-cult",
+  storageBucket:"fiz-cult.firebasestorage.app",
+  messagingSenderId:"451011766706",
+  appId:"1:451011766706:web:2f58d16b5edfc620409cab"
+});
+const db = firebase.firestore();
+
+// ── AUTH ──────────────────────────────────────────
+const PW_KEY = 'kult_admin_pw';
+const DEFAULT_PW = 'kult2024admin';
+
+function login() {
+  const v = document.getElementById('pw').value;
+  const stored = localStorage.getItem(PW_KEY) || DEFAULT_PW;
+  if (v === stored) {
+    sessionStorage.setItem('kadmin','1');
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('admin-screen').style.display='block';
+    loadAll();
+  } else {
+    document.getElementById('login-err').style.display='block';
+  }
+}
+function logout(){ sessionStorage.removeItem('kadmin'); location.reload(); }
+function changePw(){
+  const p1=document.getElementById('pw1').value;
+  const p2=document.getElementById('pw2').value;
+  if(!p1) return toast('Введите пароль');
+  if(p1!==p2) return toast('Пароли не совпадают');
+  localStorage.setItem(PW_KEY,p1);
+  document.getElementById('pw1').value='';
+  document.getElementById('pw2').value='';
+  toast('✅ Пароль изменён');
+}
+window.onload=()=>{
+  if(sessionStorage.getItem('kadmin')){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('admin-screen').style.display='block';
+    loadAll();
+  }
+};
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none') login(); });
+
+// ── NAVIGATION ────────────────────────────────────
+function go(name, btn) {
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  if(btn) btn.classList.add('active');
+  const loaders={dashboard:loadDashboard,schedule:loadSchedule,trainers:loadTrainers,
+                 clients:loadClients,prices:loadPrices,settings:loadSettings};
+  if(loaders[name]) loaders[name]();
+}
+
+// ── LOAD ALL ──────────────────────────────────────
+let trainersCache={};
+async function loadAll(){
+  await loadTrainersData();
+  loadDashboard();
+}
+async function loadTrainersData(){
+  const snap=await db.collection('trainers').get();
+  trainersCache={};
+  snap.docs.forEach(d=>{ trainersCache[d.id]={id:d.id,...d.data()}; });
+}
+
+// ── DASHBOARD ─────────────────────────────────────
+async function loadDashboard(){
+  const [u,b,t]=await Promise.all([
+    db.collection('users').get(),
+    db.collection('bookings').get(),
+    db.collection('trainers').get()
+  ]);
+  document.getElementById('s-clients').textContent=u.size;
+  document.getElementById('s-trainers').textContent=t.size;
+  document.getElementById('s-ab').textContent=u.docs.filter(d=>d.data().abonement).length;
+  const now=new Date(); now.setHours(0,0,0,0);
+  const end=new Date(now.getTime()+86400000);
+  document.getElementById('s-today').textContent=b.docs.filter(d=>{
+    const td=d.data().trainingDate; if(!td) return false;
+    const dt=new Date(td); return dt>=now&&dt<end;
+  }).length;
+  const ST={upcoming:'⏳',attended:'✅',missed:'❌',cancelled_by_client:'🚫'};
+  const recent=b.docs.sort((a,v)=>new Date(v.data().createdAt||0)-new Date(a.data().createdAt||0)).slice(0,8);
+  document.getElementById('dash-bookings').innerHTML=recent.map(doc=>{
+    const b=doc.data();
+    const dt=b.trainingDate?new Date(b.trainingDate).toLocaleDateString('ru-RU'):b.days||'—';
+    return `<tr><td>${b.userName||'—'}</td><td>${b.name||'—'}</td><td>${b.trainer||'—'}</td><td>${dt}</td><td>${ST[b.status]||''} ${b.status||'—'}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Нет записей</td></tr>';
+}
+
+// ── SCHEDULE ──────────────────────────────────────
+let schedCache={};
+async function loadSchedule(){
+  const snap=await db.collection('schedule').get();
+  schedCache={};
+  snap.docs.forEach(d=>{ schedCache[d.id]={id:d.id,...d.data()}; });
+  renderSched();
+}
+function schedTab(tab,btn){
+  document.querySelectorAll('.tabs .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sched-mwf').style.display=tab==='mwf'?'block':'none';
+  document.getElementById('sched-tts').style.display=tab==='tts'?'block':'none';
+}
+function renderSched(){
+  ['mwf','tts'].forEach(g=>{
+    const slots=Object.values(schedCache).filter(s=>s.group===g).sort((a,b)=>a.time.localeCompare(b.time));
+    const el=document.getElementById('sched-'+g);
+    el.innerHTML=slots.length?slots.map(s=>`
+      <div class="slot-row">
+        <span style="font-size:18px;font-weight:500;color:var(--forest)">${s.time}</span>
+        <span>${s.name}</span>
+        <span style="color:var(--muted)">${s.trainer}</span>
+        <button class="btn btn-g btn-sm" onclick="openSlot('${s.id}')">Изменить</button>
+      </div>`).join('')
+    :'<div style="color:var(--muted);padding:16px">Нет слотов. Нажми "+ Добавить"</div>';
+  });
+}
+function openSlot(id){
+  const s=id?schedCache[id]:null;
+  document.getElementById('slot-id').value=id||'';
+  document.getElementById('m-slot-title').textContent=id?'Изменить тренировку':'Добавить тренировку';
+  document.getElementById('sl-name').value=s?.name||'';
+  document.getElementById('sl-time').value=s?.time||'';
+  document.getElementById('sl-group').value=s?.group||'mwf';
+  document.getElementById('del-slot').style.display=id?'inline-flex':'none';
+  // заполняем тренеров
+  document.getElementById('sl-trainer').innerHTML='<option value="">— выбери —</option>'+
+    Object.values(trainersCache).map(t=>`<option value="${t.name}"${t.name===s?.trainer?' selected':''}>${t.name}</option>`).join('');
+  openM('m-slot');
+}
+async function saveSlot(){
+  const name=document.getElementById('sl-name').value.trim();
+  const time=document.getElementById('sl-time').value;
+  const trainer=document.getElementById('sl-trainer').value;
+  const group=document.getElementById('sl-group').value;
+  if(!name||!time||!trainer) return toast('Заполни все поля');
+  const id=document.getElementById('slot-id').value;
+  const data={name,time,trainer,group};
+  if(id) await db.collection('schedule').doc(id).set(data);
+  else await db.collection('schedule').add(data);
+  await loadSchedule(); closeM('m-slot'); toast('✅ Расписание сохранено');
+}
+async function delSlot(){
+  const id=document.getElementById('slot-id').value;
+  if(!id||!confirm('Удалить этот слот?')) return;
+  await db.collection('schedule').doc(id).delete();
+  await loadSchedule(); closeM('m-slot'); toast('Слот удалён');
+}
+
+// ── TRAINERS ──────────────────────────────────────
+async function loadTrainers(){
+  await loadTrainersData();
+  const list=document.getElementById('trainers-list');
+  const entries=Object.values(trainersCache);
+  if(!entries.length){ list.innerHTML='<div class="card" style="color:var(--muted)">Тренеры не добавлены</div>'; return; }
+  list.innerHTML=entries.map(t=>`
+    <div class="card" style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start">
+      <div>
+        <div style="font-size:18px;font-weight:500;margin-bottom:4px">${t.name}</div>
+        <div style="font-size:13px;color:var(--gold);margin-bottom:6px">${t.spec||''}</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:4px">📱 Телефон: <code>${t.phone||'—'}</code></div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5">${(t.bio||'').slice(0,120)}${t.bio&&t.bio.length>120?'...':''}</div>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="openTrainer('${t.id}')">Изменить</button>
+    </div>`).join('');
+}
+function openTrainer(id){
+  const t=id?trainersCache[id]:null;
+  document.getElementById('tr-id').value=id||'';
+  document.getElementById('m-trainer-title').textContent=id?'Изменить тренера':'Добавить тренера';
+  document.getElementById('tr-name').value=t?.name||'';
+  document.getElementById('tr-phone').value=t?.phone||'';
+  document.getElementById('tr-spec').value=t?.spec||'';
+  document.getElementById('tr-bio').value=t?.bio||'';
+  document.getElementById('del-trainer').style.display=id?'inline-flex':'none';
+  openM('m-trainer');
+}
+async function saveTrainer(){
+  const name=document.getElementById('tr-name').value.trim();
+  const phone=document.getElementById('tr-phone').value.replace(/\D/g,'');
+  const spec=document.getElementById('tr-spec').value.trim();
+  const bio=document.getElementById('tr-bio').value.trim();
+  if(!name||!phone) return toast('Введи имя и телефон');
+  const id=document.getElementById('tr-id').value||
+    name.toLowerCase().replace(/\s+/g,'').replace(/[^a-zа-яё]/gi,'').slice(0,8)+Date.now().toString().slice(-4);
+  await db.collection('trainers').doc(id).set({name,phone,spec,bio});
+  await loadTrainers(); closeM('m-trainer'); toast('✅ Тренер сохранён');
+}
+async function delTrainer(){
+  const id=document.getElementById('tr-id').value;
+  if(!id||!confirm('Удалить тренера?')) return;
+  await db.collection('trainers').doc(id).delete();
+  await loadTrainers(); closeM('m-trainer'); toast('Тренер удалён');
+}
+
+// ── CLIENTS ───────────────────────────────────────
+let clientsCache=[];
+const AB_L={single:'Разовое',ab8:'8 тр.',ab12:'12 тр.',ab16:'16 тр.'};
+async function loadClients(){
+  const snap=await db.collection('users').get();
+  clientsCache=snap.docs.map(d=>({phone:d.id,...d.data()}));
+  renderClients(clientsCache);
+}
+function renderClients(list){
+  document.getElementById('clients-tbody').innerHTML=list.map(c=>`
+    <tr>
+      <td>${c.name||'—'}</td>
+      <td><code>+${c.phone}</code></td>
+      <td>${c.abonement?`<span class="bdg bdg-y">${AB_L[c.abonement]||c.abonement}</span>
+`:'<span class="bdg">—</span>'}</td>
+      <td>${c.telegramChatId?'<span class="bdg bdg-g">✓ Есть</span>':'<span class="bdg bdg-r">✗ Нет</span>'}</td>
+      <td><select onchange="changeAb('${c.phone}',this.value)" style="padding:5px 8px;font-size:12px;width:auto">
+        <option value="">Без аб.</option>
+        <option value="single"${c.abonement==='single'?' selected':''}>Разовое</option>
+        <option value="ab8"${c.abonement==='ab8'?' selected':''}>8 тр.</option>
+        <option value="ab12"${c.abonement==='ab12'?' selected':''}>12 тр.</option>
+        <option value="ab16"${c.abonement==='ab16'?' selected':''}>16 тр.</option>
+      </select></td>
+    </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Клиентов нет</td></tr>';
+}
+function filterClients(){
+  const q=document.getElementById('cl-search').value.toLowerCase();
+  renderClients(clientsCache.filter(c=>(c.name||'').toLowerCase().includes(q)||c.phone.includes(q.replace(/\D/g,''))));
+}
+async function changeAb(phone,ab){
+  await db.collection('users').doc(phone).set({abonement:ab||null},{merge:true});
+  toast('✅ Абонемент обновлён');
+}
+function openClient(){ document.getElementById('cl-name').value=''; document.getElementById('cl-phone').value=''; document.getElementById('cl-ab').value=''; openM('m-client'); }
+async function saveClient(){
+  const name=document.getElementById('cl-name').value.trim();
+  let phone=document.getElementById('cl-phone').value.replace(/\D/g,'');
+  const ab=document.getElementById('cl-ab').value;
+  if(!name||!phone) return toast('Введи имя и телефон');
+  if(phone.length===10) phone='7'+phone;
+  if(phone.startsWith('8')) phone='7'+phone.slice(1);
+  const ex=await db.collection('users').doc(phone).get();
+  if(ex.exists) return toast('Клиент с таким номером уже есть');
+  await db.collection('users').doc(phone).set({name,phone,abonement:ab||null,createdAt:new Date().toISOString(),addedByAdmin:true});
+  closeM('m-client'); await loadClients(); toast('✅ Клиент добавлен');
+}
+
+// ── PRICES ────────────────────────────────────────
+const AB_DEF={single:{label:'Разовое посещение',price:700,sessions:1},ab8:{label:'8 тренировок',price:4300,sessions:8},ab12:{label:'12 тренировок',price:4800,sessions:12},ab16:{label:'16 тренировок',price:6000,sessions:16}};
+async function loadPrices(){
+  const snap=await db.collection('settings').doc('abonements').get();
+  const data=snap.exists?snap.data():AB_DEF;
+  document.getElementById('prices-form').innerHTML=Object.entries(AB_DEF).map(([id,def])=>{
+    const cur=data[id]||def;
+    return `<div class="row row-2" style="margin-bottom:12px">
+      <div class="fg"><label>${def.label} — цена (₽)</label><input id="p-${id}" type="number" value="${cur.price}"></div>
+      <div class="fg"><label>Количество занятий</label><input id="ps-${id}" type="number" value="${cur.sessions||def.sessions}"></div>
+    </div>`;
+  }).join('');
+}
+async function savePrices(){
+  const data={};
+  for(const [id,def] of Object.entries(AB_DEF)){
+    data[id]={label:def.label,price:parseInt(document.getElementById('p-'+id).value)||def.price,sessions:parseInt(document.getElementById('ps-'+id).value)||def.sessions};
+  }
+  await db.collection('settings').doc('abonements').set(data);
+  toast('✅ Цены сохранены');
+}
+
+// ── SETTINGS ──────────────────────────────────────
+async function loadSettings(){
+  const snap=await db.collection('settings').doc('contacts').get();
+  const d=snap.exists?snap.data():{};
+  document.getElementById('s-addr').value=d.address||'ул. Кремлёвская, 1, ЖК Кремлёвский, Астрахань';
+  document.getElementById('s-phone').value=d.phone||'+7 (989) 794-94-11';
+  document.getElementById('s-hours').value=d.hours||'Пн–Сб, с 9:00 до 20:00';
+  document.getElementById('s-ig').value=d.instagram||'https://www.instagram.com/fizkult_ast';
+  document.getElementById('s-vk').value=d.vk||'https://vk.ru/fizkult_ast_30';
+  document.getElementById('s-tg').value=d.telegram||'';
+  document.getElementById('s-wa').value=d.whatsapp||'';
+}
+async function saveContacts(){
+  const data={address:document.getElementById('s-addr').value,phone:document.getElementById('s-phone').value,hours:document.getElementById('s-hours').value,instagram:document.getElementById('s-ig').value,vk:document.getElementById('s-vk').value,telegram:document.getElementById('s-tg').value,whatsapp:document.getElementById('s-wa').value};
+  await db.collection('settings').doc('contacts').set(data);
+  toast('✅ Настройки сохранены');
+}
+async function saveSocials(){ await saveContacts(); }
+
+// ── MODAL / TOAST ─────────────────────────────────
+function openM(id){ document.getElementById(id).classList.add('open'); }
+function closeM(id){ document.getElementById(id).classList.remove('open'); }
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),3000);
+}
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
+</script>
+</body>
+</html>
