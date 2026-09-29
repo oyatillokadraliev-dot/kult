@@ -172,6 +172,8 @@ function renderNav(){
         <svg class="mm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
         Выйти
       </button>`;
+          const adminLink=document.getElementById('admin-link');
+          if(adminLink&&user.phone==='79608663273') adminLink.style.display='inline';
   } else {
     el.innerHTML=`<button class="btn-outline" onclick="openAuth('login')">Войти</button><button class="btn-primary" onclick="openAuth('register')">Записаться</button>`;
     mm.innerHTML=`
