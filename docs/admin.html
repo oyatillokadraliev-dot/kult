@@ -9,12 +9,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#F8F6F3;--surface:#EDE8E1;--ink:#1C1917;--muted:#78716C;--forest:#332E28;--gold:#C9A96E;--white:#fff;--red:#dc2626;--green:#16a34a;--border:rgba(28,25,23,.12);--r:12px;--sh:0 2px 12px rgba(28,25,23,.08)}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
-/* LOGIN */
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
 .login-box{background:var(--white);border-radius:var(--r);padding:48px 40px;width:100%;max-width:400px;box-shadow:var(--sh);text-align:center}
 .login-logo{font-family:'Playfair Display',serif;font-size:32px;margin-bottom:4px}
 .login-sub{font-size:14px;color:var(--muted);margin-bottom:32px}
-/* ADMIN */
 #admin-screen{display:none}
 .topbar{background:var(--forest);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .topbar-logo{font-family:'Playfair Display',serif;font-size:18px;color:var(--white)}
@@ -25,28 +23,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 .nav-btn.active{background:var(--bg);color:var(--forest);font-weight:500;border-right:3px solid var(--forest)}
 .sep{height:1px;background:var(--border);margin:8px 0}
 .content{padding:32px;overflow-y:auto}
-/* SECTIONS */
 .sec{display:none}.sec.active{display:block}
 .sec-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
 .sec-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:500}
-/* STATS */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
 .stat{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:20px}
 .stat-n{font-family:'Playfair Display',serif;font-size:38px;color:var(--forest);line-height:1}
 .stat-l{font-size:12px;color:var(--muted);margin-top:4px}
-/* CARDS */
 .card{background:var(--white);border-radius:var(--r);padding:24px;margin-bottom:16px;border:1px solid var(--border)}
 .card-title{font-size:14px;font-weight:500;color:var(--forest);margin-bottom:16px}
-/* FORM */
 .row{display:grid;gap:14px;margin-bottom:14px}
 .row-2{grid-template-columns:1fr 1fr}
 .row-1{grid-template-columns:1fr}
+.row-3{grid-template-columns:1fr 1fr 1fr}
 .fg{display:flex;flex-direction:column;gap:5px}
 label{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
 input,select,textarea{font-family:'DM Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--bg);border:1.5px solid transparent;padding:10px 14px;border-radius:8px;outline:none;transition:border-color .2s;width:100%}
 input:focus,select:focus,textarea:focus{background:var(--white);border-color:var(--forest)}
 textarea{resize:vertical;min-height:90px}
-/* BTNS */
 .btn{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:10px 22px;border-radius:100px;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
 .btn-p{background:var(--forest);color:var(--white)}.btn-p:hover{background:var(--ink)}
 .btn-g{background:transparent;color:var(--muted);border:1.5px solid var(--border)}.btn-g:hover{color:var(--ink);border-color:var(--ink)}
@@ -54,37 +48,43 @@ textarea{resize:vertical;min-height:90px}
 .btn-sm{padding:7px 14px;font-size:12px}
 .btn-logout{font-size:13px;color:rgba(255,255,255,.6);background:none;border:1px solid rgba(255,255,255,.2);padding:7px 16px;border-radius:100px;cursor:pointer}
 .btn-logout:hover{color:var(--white);border-color:rgba(255,255,255,.5)}
-/* TABLE */
 .tbl{width:100%;border-collapse:collapse}
 .tbl th{text-align:left;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 14px;border-bottom:2px solid var(--border)}
 .tbl td{padding:12px 14px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
 .tbl tr:hover td{background:var(--bg)}
-/* BADGES */
 .bdg{font-size:11px;font-weight:500;padding:3px 10px;border-radius:100px}
 .bdg-g{background:rgba(22,163,74,.1);color:var(--green)}
 .bdg-r{background:rgba(220,38,38,.1);color:var(--red)}
 .bdg-y{background:rgba(201,169,110,.2);color:#9a7a3a}
-/* SCHEDULE */
 .slot-row{display:grid;grid-template-columns:80px 1fr 1fr auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:6px}
-/* TABS */
 .tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--surface);padding:4px;border-radius:100px;width:fit-content}
 .tab{font-size:13px;font-weight:500;padding:8px 20px;border-radius:100px;border:none;background:none;cursor:pointer;color:var(--muted);transition:all .2s}
 .tab.active{background:var(--white);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08)}
-/* MODAL */
 .ov{display:none;position:fixed;inset:0;background:rgba(28,25,23,.5);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
 .ov.open{display:flex}
-.modal{background:var(--white);border-radius:var(--r);padding:32px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative}
+.modal{background:var(--white);border-radius:var(--r);padding:32px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;position:relative}
 .modal-title{font-family:'Playfair Display',serif;font-size:22px;margin-bottom:20px}
 .modal-close{position:absolute;top:20px;right:20px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted)}
-/* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;background:var(--forest);color:var(--white);padding:13px 24px;border-radius:100px;font-size:13px;opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none;z-index:999}
 .toast.show{opacity:1;transform:translateY(0)}
-@media(max-width:768px){.layout{grid-template-columns:1fr}.sidebar{display:none}.stats{grid-template-columns:repeat(2,1fr)}.row-2{grid-template-columns:1fr}}
+/* Photo upload */
+.photo-upload{border:2px dashed var(--border);border-radius:var(--r);padding:20px;text-align:center;cursor:pointer;transition:border-color .2s;position:relative}
+.photo-upload:hover{border-color:var(--forest)}
+.photo-upload input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.photo-preview{width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block;border:2px solid var(--border)}
+.trainer-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.trainer-card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.trainer-card-photo{width:100%;height:180px;object-fit:cover;background:var(--surface);display:block}
+.trainer-card-photo-placeholder{width:100%;height:180px;background:linear-gradient(145deg,var(--surface),var(--gold)20%);display:flex;align-items:center;justify-content:center;font-size:48px;color:rgba(201,169,110,.4)}
+.trainer-card-body{padding:16px}
+.trainer-card-name{font-size:17px;font-weight:500;margin-bottom:4px}
+.trainer-card-spec{font-size:12px;color:var(--gold);margin-bottom:8px}
+.trainer-card-phone{font-size:12px;color:var(--muted);margin-bottom:12px}
+@media(max-width:768px){.layout{grid-template-columns:1fr}.sidebar{display:none}.stats{grid-template-columns:repeat(2,1fr)}.row-2,.row-3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">КУЛЬТ</div>
@@ -98,7 +98,6 @@ textarea{resize:vertical;min-height:90px}
   </div>
 </div>
 
-<!-- ADMIN -->
 <div id="admin-screen">
   <div class="topbar">
     <span class="topbar-logo">КУЛЬТ · Администратор</span>
@@ -150,16 +149,16 @@ textarea{resize:vertical;min-height:90px}
       <div class="sec" id="sec-trainers">
         <div class="sec-head">
           <div class="sec-title">Тренеры</div>
-          <button class="btn btn-p" onclick="openTrainer()">+ Добавить</button>
+          <button class="btn btn-p" onclick="openTrainer()">+ Добавить тренера</button>
         </div>
-        <div id="trainers-list"></div>
+        <div class="trainer-card-grid" id="trainers-list"></div>
       </div>
 
       <!-- CLIENTS -->
       <div class="sec" id="sec-clients">
         <div class="sec-head">
           <div class="sec-title">Клиенты</div>
-          <button class="btn btn-p" onclick="openClient()">+ Добавить</button>
+          <button class="btn btn-p" onclick="openClient()">+ Добавить клиента</button>
         </div>
         <div class="card" style="margin-bottom:12px">
           <input id="cl-search" placeholder="Поиск по имени или телефону..." oninput="filterClients()" style="max-width:340px">
@@ -194,17 +193,17 @@ textarea{resize:vertical;min-height:90px}
         <div class="card">
           <div class="card-title">Ссылки на соцсети</div>
           <div class="row row-2">
-            <div class="fg"><label>Instagram</label><input id="s-ig" placeholder="https://instagram.com/..."></div>
-            <div class="fg"><label>ВКонтакте</label><input id="s-vk" placeholder="https://vk.com/..."></div>
+            <div class="fg"><label>Instagram</label><input id="s-ig"></div>
+            <div class="fg"><label>ВКонтакте</label><input id="s-vk"></div>
           </div>
           <div class="row row-2">
-            <div class="fg"><label>Telegram</label><input id="s-tg" placeholder="https://t.me/..."></div>
-            <div class="fg"><label>WhatsApp</label><input id="s-wa" placeholder="https://wa.me/..."></div>
+            <div class="fg"><label>Telegram</label><input id="s-tg"></div>
+            <div class="fg"><label>WhatsApp</label><input id="s-wa"></div>
           </div>
-          <button class="btn btn-p" onclick="saveSocials()">Сохранить</button>
+          <button class="btn btn-p" onclick="saveContacts()">Сохранить</button>
         </div>
         <div class="card">
-          <div class="card-title">Смена пароля</div>
+          <div class="card-title">Смена пароля администратора</div>
           <div class="row row-2">
             <div class="fg"><label>Новый пароль</label><input id="pw1" type="password"></div>
             <div class="fg"><label>Повторите</label><input id="pw2" type="password"></div>
@@ -217,7 +216,7 @@ textarea{resize:vertical;min-height:90px}
   </div>
 </div>
 
-<!-- MODAL SLOT -->
+<!-- MODAL: слот расписания -->
 <div class="ov" id="m-slot">
   <div class="modal">
     <button class="modal-close" onclick="closeM('m-slot')">×</button>
@@ -244,12 +243,27 @@ textarea{resize:vertical;min-height:90px}
   </div>
 </div>
 
-<!-- MODAL TRAINER -->
+<!-- MODAL: тренер -->
 <div class="ov" id="m-trainer">
   <div class="modal">
     <button class="modal-close" onclick="closeM('m-trainer')">×</button>
     <div class="modal-title" id="m-trainer-title">Добавить тренера</div>
     <input type="hidden" id="tr-id">
+
+    <!-- Фото -->
+    <div class="fg" style="margin-bottom:14px">
+      <label>Фото тренера</label>
+      <div class="photo-upload" id="photo-upload-area">
+        <input type="file" id="tr-photo-file" accept="image/*" onchange="previewPhoto(this)">
+        <img id="tr-photo-preview" class="photo-preview" style="display:none">
+        <div id="photo-upload-text">
+          <div style="font-size:28px;margin-bottom:6px">📷</div>
+          <div style="font-size:13px;color:var(--muted)">Нажми чтобы выбрать фото</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">JPG, PNG — до 2MB</div>
+        </div>
+      </div>
+    </div>
+
     <div class="row row-2">
       <div class="fg"><label>Имя</label><input id="tr-name" placeholder="Имя тренера"></div>
       <div class="fg"><label>Телефон для входа</label><input id="tr-phone" placeholder="79001234567"></div>
@@ -268,7 +282,7 @@ textarea{resize:vertical;min-height:90px}
   </div>
 </div>
 
-<!-- MODAL CLIENT -->
+<!-- MODAL: клиент -->
 <div class="ov" id="m-client">
   <div class="modal">
     <button class="modal-close" onclick="closeM('m-client')">×</button>
@@ -299,6 +313,7 @@ textarea{resize:vertical;min-height:90px}
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script>
 firebase.initializeApp({
   apiKey:"AIzaSyA9AByymeqj8RFy1dhitLPpifoXTf8wLF8",
@@ -308,57 +323,43 @@ firebase.initializeApp({
   messagingSenderId:"451011766706",
   appId:"1:451011766706:web:2f58d16b5edfc620409cab"
 });
-const db = firebase.firestore();
+const db=firebase.firestore();
+const storage=firebase.storage();
 
-// ── AUTH ──────────────────────────────────────────
-const PW_KEY = 'kult_admin_pw';
-const DEFAULT_PW = 'kult2024admin';
-
-function login() {
-  const v = document.getElementById('pw').value;
-  const stored = localStorage.getItem(PW_KEY) || DEFAULT_PW;
-  if (v === stored) {
-    sessionStorage.setItem('kadmin','1');
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('admin-screen').style.display='block';
-    loadAll();
-  } else {
-    document.getElementById('login-err').style.display='block';
-  }
+// ── AUTH ──────────────────────────────────
+const PW_KEY='kult_admin_pw';
+const DEFAULT_PW='kult2024admin';
+function login(){
+  const v=document.getElementById('pw').value;
+  const stored=localStorage.getItem(PW_KEY)||DEFAULT_PW;
+  if(v===stored){sessionStorage.setItem('kadmin','1');document.getElementById('login-screen').style.display='none';document.getElementById('admin-screen').style.display='block';loadAll();}
+  else{document.getElementById('login-err').style.display='block';}
 }
-function logout(){ sessionStorage.removeItem('kadmin'); location.reload(); }
+function logout(){sessionStorage.removeItem('kadmin');location.reload();}
 function changePw(){
-  const p1=document.getElementById('pw1').value;
-  const p2=document.getElementById('pw2').value;
-  if(!p1) return toast('Введите пароль');
-  if(p1!==p2) return toast('Пароли не совпадают');
-  localStorage.setItem(PW_KEY,p1);
-  document.getElementById('pw1').value='';
-  document.getElementById('pw2').value='';
+  const p1=document.getElementById('pw1').value,p2=document.getElementById('pw2').value;
+  if(!p1)return toast('Введите пароль');
+  if(p1!==p2)return toast('Пароли не совпадают');
+  localStorage.setItem(PW_KEY,p1);document.getElementById('pw1').value='';document.getElementById('pw2').value='';
   toast('✅ Пароль изменён');
 }
 window.onload=()=>{
-  if(sessionStorage.getItem('kadmin')){
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('admin-screen').style.display='block';
-    loadAll();
-  }
+  if(sessionStorage.getItem('kadmin')){document.getElementById('login-screen').style.display='none';document.getElementById('admin-screen').style.display='block';loadAll();}
 };
-document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none') login(); });
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')login();});
 
-// ── NAVIGATION ────────────────────────────────────
-function go(name, btn) {
+// ── NAVIGATION ────────────────────────────
+function go(name,btn){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
-  if(btn) btn.classList.add('active');
-  const loaders={dashboard:loadDashboard,schedule:loadSchedule,trainers:loadTrainers,
-                 clients:loadClients,prices:loadPrices,settings:loadSettings};
-  if(loaders[name]) loaders[name]();
+  if(btn)btn.classList.add('active');
+  ({dashboard:loadDashboard,schedule:loadSchedule,trainers:loadTrainers,clients:loadClients,prices:loadPrices,settings:loadSettings})[name]?.();
 }
 
-// ── LOAD ALL ──────────────────────────────────────
-let trainersCache={};
+// ── CACHE ─────────────────────────────────
+let trainersCache={},clientsCache=[];
+
 async function loadAll(){
   await loadTrainersData();
   loadDashboard();
@@ -366,40 +367,33 @@ async function loadAll(){
 async function loadTrainersData(){
   const snap=await db.collection('trainers').get();
   trainersCache={};
-  snap.docs.forEach(d=>{ trainersCache[d.id]={id:d.id,...d.data()}; });
+  snap.docs.forEach(d=>{trainersCache[d.id]={id:d.id,...d.data()};});
 }
 
-// ── DASHBOARD ─────────────────────────────────────
+// ── DASHBOARD ─────────────────────────────
 async function loadDashboard(){
-  const [u,b,t]=await Promise.all([
-    db.collection('users').get(),
-    db.collection('bookings').get(),
-    db.collection('trainers').get()
-  ]);
+  const [u,b,t]=await Promise.all([db.collection('users').get(),db.collection('bookings').get(),db.collection('trainers').get()]);
   document.getElementById('s-clients').textContent=u.size;
   document.getElementById('s-trainers').textContent=t.size;
   document.getElementById('s-ab').textContent=u.docs.filter(d=>d.data().abonement).length;
-  const now=new Date(); now.setHours(0,0,0,0);
+  const now=new Date();now.setHours(0,0,0,0);
   const end=new Date(now.getTime()+86400000);
-  document.getElementById('s-today').textContent=b.docs.filter(d=>{
-    const td=d.data().trainingDate; if(!td) return false;
-    const dt=new Date(td); return dt>=now&&dt<end;
-  }).length;
-  const ST={upcoming:'⏳',attended:'✅',missed:'❌',cancelled_by_client:'🚫'};
+  document.getElementById('s-today').textContent=b.docs.filter(d=>{const td=d.data().trainingDate;if(!td)return false;const dt=new Date(td);return dt>=now&&dt<end;}).length;
+  const ST={upcoming:'⏳ Ожидает',attended:'✅ Пришла',missed:'❌ Не пришла',cancelled_by_client:'🚫 Отменила'};
   const recent=b.docs.sort((a,v)=>new Date(v.data().createdAt||0)-new Date(a.data().createdAt||0)).slice(0,8);
   document.getElementById('dash-bookings').innerHTML=recent.map(doc=>{
     const b=doc.data();
     const dt=b.trainingDate?new Date(b.trainingDate).toLocaleDateString('ru-RU'):b.days||'—';
-    return `<tr><td>${b.userName||'—'}</td><td>${b.name||'—'}</td><td>${b.trainer||'—'}</td><td>${dt}</td><td>${ST[b.status]||''} ${b.status||'—'}</td></tr>`;
+    return `<tr><td>${b.userName||'—'}</td><td>${b.name||'—'}</td><td>${b.trainer||'—'}</td><td>${dt}</td><td>${ST[b.status]||b.status||'—'}</td></tr>`;
   }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Нет записей</td></tr>';
 }
 
-// ── SCHEDULE ──────────────────────────────────────
+// ── SCHEDULE ──────────────────────────────
 let schedCache={};
 async function loadSchedule(){
   const snap=await db.collection('schedule').get();
   schedCache={};
-  snap.docs.forEach(d=>{ schedCache[d.id]={id:d.id,...d.data()}; });
+  snap.docs.forEach(d=>{schedCache[d.id]={id:d.id,...d.data()};});
   renderSched();
 }
 function schedTab(tab,btn){
@@ -411,15 +405,12 @@ function schedTab(tab,btn){
 function renderSched(){
   ['mwf','tts'].forEach(g=>{
     const slots=Object.values(schedCache).filter(s=>s.group===g).sort((a,b)=>a.time.localeCompare(b.time));
-    const el=document.getElementById('sched-'+g);
-    el.innerHTML=slots.length?slots.map(s=>`
+    document.getElementById('sched-'+g).innerHTML=slots.length?slots.map(s=>`
       <div class="slot-row">
         <span style="font-size:18px;font-weight:500;color:var(--forest)">${s.time}</span>
-        <span>${s.name}</span>
-        <span style="color:var(--muted)">${s.trainer}</span>
+        <span>${s.name}</span><span style="color:var(--muted)">${s.trainer}</span>
         <button class="btn btn-g btn-sm" onclick="openSlot('${s.id}')">Изменить</button>
-      </div>`).join('')
-    :'<div style="color:var(--muted);padding:16px">Нет слотов. Нажми "+ Добавить"</div>';
+      </div>`).join(''):'<div style="color:var(--muted);padding:16px">Нет слотов. Нажми "+ Добавить"</div>';
   });
 }
 function openSlot(id){
@@ -430,7 +421,6 @@ function openSlot(id){
   document.getElementById('sl-time').value=s?.time||'';
   document.getElementById('sl-group').value=s?.group||'mwf';
   document.getElementById('del-slot').style.display=id?'inline-flex':'none';
-  // заполняем тренеров
   document.getElementById('sl-trainer').innerHTML='<option value="">— выбери —</option>'+
     Object.values(trainersCache).map(t=>`<option value="${t.name}"${t.name===s?.trainer?' selected':''}>${t.name}</option>`).join('');
   openM('m-slot');
@@ -440,39 +430,60 @@ async function saveSlot(){
   const time=document.getElementById('sl-time').value;
   const trainer=document.getElementById('sl-trainer').value;
   const group=document.getElementById('sl-group').value;
-  if(!name||!time||!trainer) return toast('Заполни все поля');
+  if(!name||!time||!trainer)return toast('Заполни все поля');
   const id=document.getElementById('slot-id').value;
   const data={name,time,trainer,group};
-  if(id) await db.collection('schedule').doc(id).set(data);
+  if(id)await db.collection('schedule').doc(id).set(data);
   else await db.collection('schedule').add(data);
-  await loadSchedule(); closeM('m-slot'); toast('✅ Расписание сохранено');
+  await loadSchedule();closeM('m-slot');toast('✅ Расписание сохранено');
 }
 async function delSlot(){
   const id=document.getElementById('slot-id').value;
-  if(!id||!confirm('Удалить этот слот?')) return;
+  if(!id||!confirm('Удалить этот слот?'))return;
   await db.collection('schedule').doc(id).delete();
-  await loadSchedule(); closeM('m-slot'); toast('Слот удалён');
+  await loadSchedule();closeM('m-slot');toast('Слот удалён');
 }
 
-// ── TRAINERS ──────────────────────────────────────
+// ── TRAINERS ──────────────────────────────
+let trPhotoBase64='';
+
+function previewPhoto(input){
+  const file=input.files[0];
+  if(!file)return;
+  if(file.size>2*1024*1024){toast('Файл слишком большой (макс 2MB)');return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    trPhotoBase64=e.target.result;
+    const img=document.getElementById('tr-photo-preview');
+    img.src=trPhotoBase64;
+    img.style.display='block';
+    document.getElementById('photo-upload-text').style.display='none';
+  };
+  reader.readAsDataURL(file);
+}
+
 async function loadTrainers(){
   await loadTrainersData();
   const list=document.getElementById('trainers-list');
   const entries=Object.values(trainersCache);
-  if(!entries.length){ list.innerHTML='<div class="card" style="color:var(--muted)">Тренеры не добавлены</div>'; return; }
+  if(!entries.length){list.innerHTML='<div class="card" style="color:var(--muted)">Тренеры не добавлены. Нажми "+ Добавить тренера"</div>';return;}
   list.innerHTML=entries.map(t=>`
-    <div class="card" style="display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start">
-      <div>
-        <div style="font-size:18px;font-weight:500;margin-bottom:4px">${t.name}</div>
-        <div style="font-size:13px;color:var(--gold);margin-bottom:6px">${t.spec||''}</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:4px">📱 Телефон: <code>${t.phone||'—'}</code></div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.5">${(t.bio||'').slice(0,120)}${t.bio&&t.bio.length>120?'...':''}</div>
+    <div class="trainer-card">
+      ${t.photoBase64
+        ?`<img src="${t.photoBase64}" class="trainer-card-photo" alt="${t.name}">`
+        :`<div class="trainer-card-photo-placeholder">👩</div>`}
+      <div class="trainer-card-body">
+        <div class="trainer-card-name">${t.name}</div>
+        <div class="trainer-card-spec">${t.spec||''}</div>
+        <div class="trainer-card-phone">📱 ${t.phone||'—'}</div>
+        <button class="btn btn-g btn-sm" onclick="openTrainer('${t.id}')">Изменить</button>
       </div>
-      <button class="btn btn-g btn-sm" onclick="openTrainer('${t.id}')">Изменить</button>
     </div>`).join('');
 }
+
 function openTrainer(id){
   const t=id?trainersCache[id]:null;
+  trPhotoBase64=t?.photoBase64||'';
   document.getElementById('tr-id').value=id||'';
   document.getElementById('m-trainer-title').textContent=id?'Изменить тренера':'Добавить тренера';
   document.getElementById('tr-name').value=t?.name||'';
@@ -480,28 +491,39 @@ function openTrainer(id){
   document.getElementById('tr-spec').value=t?.spec||'';
   document.getElementById('tr-bio').value=t?.bio||'';
   document.getElementById('del-trainer').style.display=id?'inline-flex':'none';
+  document.getElementById('tr-photo-file').value='';
+  const img=document.getElementById('tr-photo-preview');
+  const txt=document.getElementById('photo-upload-text');
+  if(trPhotoBase64){img.src=trPhotoBase64;img.style.display='block';txt.style.display='none';}
+  else{img.style.display='none';txt.style.display='block';}
   openM('m-trainer');
 }
+
 async function saveTrainer(){
   const name=document.getElementById('tr-name').value.trim();
   const phone=document.getElementById('tr-phone').value.replace(/\D/g,'');
   const spec=document.getElementById('tr-spec').value.trim();
   const bio=document.getElementById('tr-bio').value.trim();
-  if(!name||!phone) return toast('Введи имя и телефон');
-  const id=document.getElementById('tr-id').value||
-    name.toLowerCase().replace(/\s+/g,'').replace(/[^a-zа-яё]/gi,'').slice(0,8)+Date.now().toString().slice(-4);
-  await db.collection('trainers').doc(id).set({name,phone,spec,bio});
-  await loadTrainers(); closeM('m-trainer'); toast('✅ Тренер сохранён');
-}
-async function delTrainer(){
-  const id=document.getElementById('tr-id').value;
-  if(!id||!confirm('Удалить тренера?')) return;
-  await db.collection('trainers').doc(id).delete();
-  await loadTrainers(); closeM('m-trainer'); toast('Тренер удалён');
+  if(!name||!phone)return toast('Введи имя и телефон');
+
+  const existId=document.getElementById('tr-id').value;
+  const id=existId||(name.toLowerCase().replace(/\s+/g,'').replace(/[^a-zа-яё]/gi,'').slice(0,8)+Date.now().toString().slice(-4));
+
+  const data={name,phone,spec,bio};
+  if(trPhotoBase64)data.photoBase64=trPhotoBase64;
+
+  await db.collection('trainers').doc(id).set(data,{merge:true});
+  await loadTrainers();closeM('m-trainer');toast('✅ Тренер сохранён');
 }
 
-// ── CLIENTS ───────────────────────────────────────
-let clientsCache=[];
+async function delTrainer(){
+  const id=document.getElementById('tr-id').value;
+  if(!id||!confirm('Удалить тренера?'))return;
+  await db.collection('trainers').doc(id).delete();
+  await loadTrainers();closeM('m-trainer');toast('Тренер удалён');
+}
+
+// ── CLIENTS ───────────────────────────────
 const AB_L={single:'Разовое',ab8:'8 тр.',ab12:'12 тр.',ab16:'16 тр.'};
 async function loadClients(){
   const snap=await db.collection('users').get();
@@ -513,8 +535,7 @@ function renderClients(list){
     <tr>
       <td>${c.name||'—'}</td>
       <td><code>+${c.phone}</code></td>
-      <td>${c.abonement?`<span class="bdg bdg-y">${AB_L[c.abonement]||c.abonement}</span>
-`:'<span class="bdg">—</span>'}</td>
+      <td>${c.abonement?`<span class="bdg bdg-y">${AB_L[c.abonement]||c.abonement}</span>`:'<span class="bdg">—</span>'}</td>
       <td>${c.telegramChatId?'<span class="bdg bdg-g">✓ Есть</span>':'<span class="bdg bdg-r">✗ Нет</span>'}</td>
       <td><select onchange="changeAb('${c.phone}',this.value)" style="padding:5px 8px;font-size:12px;width:auto">
         <option value="">Без аб.</option>
@@ -533,21 +554,21 @@ async function changeAb(phone,ab){
   await db.collection('users').doc(phone).set({abonement:ab||null},{merge:true});
   toast('✅ Абонемент обновлён');
 }
-function openClient(){ document.getElementById('cl-name').value=''; document.getElementById('cl-phone').value=''; document.getElementById('cl-ab').value=''; openM('m-client'); }
+function openClient(){document.getElementById('cl-name').value='';document.getElementById('cl-phone').value='';document.getElementById('cl-ab').value='';openM('m-client');}
 async function saveClient(){
   const name=document.getElementById('cl-name').value.trim();
   let phone=document.getElementById('cl-phone').value.replace(/\D/g,'');
   const ab=document.getElementById('cl-ab').value;
-  if(!name||!phone) return toast('Введи имя и телефон');
-  if(phone.length===10) phone='7'+phone;
-  if(phone.startsWith('8')) phone='7'+phone.slice(1);
+  if(!name||!phone)return toast('Введи имя и телефон');
+  if(phone.length===10)phone='7'+phone;
+  if(phone.startsWith('8'))phone='7'+phone.slice(1);
   const ex=await db.collection('users').doc(phone).get();
-  if(ex.exists) return toast('Клиент с таким номером уже есть');
+  if(ex.exists)return toast('Клиент с таким номером уже есть');
   await db.collection('users').doc(phone).set({name,phone,abonement:ab||null,createdAt:new Date().toISOString(),addedByAdmin:true});
-  closeM('m-client'); await loadClients(); toast('✅ Клиент добавлен');
+  closeM('m-client');await loadClients();toast('✅ Клиент добавлен');
 }
 
-// ── PRICES ────────────────────────────────────────
+// ── PRICES ────────────────────────────────
 const AB_DEF={single:{label:'Разовое посещение',price:700,sessions:1},ab8:{label:'8 тренировок',price:4300,sessions:8},ab12:{label:'12 тренировок',price:4800,sessions:12},ab16:{label:'16 тренировок',price:6000,sessions:16}};
 async function loadPrices(){
   const snap=await db.collection('settings').doc('abonements').get();
@@ -562,14 +583,14 @@ async function loadPrices(){
 }
 async function savePrices(){
   const data={};
-  for(const [id,def] of Object.entries(AB_DEF)){
+  for(const[id,def]of Object.entries(AB_DEF)){
     data[id]={label:def.label,price:parseInt(document.getElementById('p-'+id).value)||def.price,sessions:parseInt(document.getElementById('ps-'+id).value)||def.sessions};
   }
   await db.collection('settings').doc('abonements').set(data);
   toast('✅ Цены сохранены');
 }
 
-// ── SETTINGS ──────────────────────────────────────
+// ── SETTINGS ──────────────────────────────
 async function loadSettings(){
   const snap=await db.collection('settings').doc('contacts').get();
   const d=snap.exists?snap.data():{};
@@ -582,20 +603,23 @@ async function loadSettings(){
   document.getElementById('s-wa').value=d.whatsapp||'';
 }
 async function saveContacts(){
-  const data={address:document.getElementById('s-addr').value,phone:document.getElementById('s-phone').value,hours:document.getElementById('s-hours').value,instagram:document.getElementById('s-ig').value,vk:document.getElementById('s-vk').value,telegram:document.getElementById('s-tg').value,whatsapp:document.getElementById('s-wa').value};
+  const data={
+    address:document.getElementById('s-addr').value,
+    phone:document.getElementById('s-phone').value,
+    hours:document.getElementById('s-hours').value,
+    instagram:document.getElementById('s-ig').value,
+    vk:document.getElementById('s-vk').value,
+    telegram:document.getElementById('s-tg').value,
+    whatsapp:document.getElementById('s-wa').value
+  };
   await db.collection('settings').doc('contacts').set(data);
   toast('✅ Настройки сохранены');
 }
-async function saveSocials(){ await saveContacts(); }
 
-// ── MODAL / TOAST ─────────────────────────────────
-function openM(id){ document.getElementById(id).classList.add('open'); }
-function closeM(id){ document.getElementById(id).classList.remove('open'); }
-function toast(msg){
-  const el=document.getElementById('toast');
-  el.textContent=msg; el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),3000);
-}
+// ── MODAL / TOAST ─────────────────────────
+function openM(id){document.getElementById(id).classList.add('open');}
+function closeM(id){document.getElementById(id).classList.remove('open');}
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),3000);}
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
 </script>
 </body>
