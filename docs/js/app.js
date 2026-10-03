@@ -558,7 +558,6 @@ async function doLogin() {
     user=found;bookings=JSON.parse(localStorage.getItem('xk_bookings_'+raw)||'[]');
     save();closeOv('ov-auth');renderNav();showPage('lk');
   }finally{showLoading(false);}
-}
 
 async function doRegister(){
   const name=document.getElementById('rg-name').value.trim();
