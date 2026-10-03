@@ -24,7 +24,40 @@ const TRAININGS={
   osanka:{name:'Здоровая спина + Растяжка',tags:['Спина','Гибкость','55 мин'],what:'Комплексная тренировка для здоровья спины и развития гибкости.',includes:'Укрепление спины и плечевого пояса, растяжка передней поверхности тела.',who:'Для всех, кто хочет красиво держать спину и стать гибче.'}
 };
 
-const TRAINER_PHONES={'79001110001':'zosya','79001110002':'ksenia','79001110003':'salma','79001110004':'farida','79001110005':'viktoria'};
+let TRAINERS_FROM_DB = {};
+ 
+async function loadTrainersFromDB() {
+  try {
+    const db = await getDB();
+    const snap = await db.collection('trainers').get();
+    TRAINERS_FROM_DB = {};
+    snap.docs.forEach(doc => {
+      const t = doc.data();
+      TRAINERS_FROM_DB[doc.id] = {
+        name: t.name || '',
+        spec: t.spec || '',
+        bio: t.bio || '',
+        phone: t.phone || '',
+        photoBase64: t.photoBase64 || null,
+        schedule: t.schedule || [],
+        reviews: t.reviews || [],
+      };
+    });
+    console.log('Тренеры загружены из Firebase:', Object.keys(TRAINERS_FROM_DB).length);
+  } catch(e) {
+    console.error('Ошибка загрузки тренеров:', e);
+    // Fallback на пустой объект
+    TRAINERS_FROM_DB = {};
+  }
+}
+ 
+// Вспомогательная функция — получить db из Firebase
+async function getDB() {
+  return new Promise(resolve => {
+    if (window._firebaseReady) resolve(window._db);
+    else document.addEventListener('firebase-ready', () => resolve(window._db), { once: true });
+  });
+}
 const TELEGRAM_BOT_USERNAME='kult_astrakhan_bot'; // TODO: заменить на реальный username бота
 
 const ABONEMENTS=[
@@ -101,16 +134,25 @@ async function dbAddReview(data){
   await fb().addDoc(fb().collection(d,'reviews'),{...data,createdAt:fb().serverTimestamp()});
 }
 
-/* INIT */
-window.addEventListener('load',async()=>{
-  renderNav();renderSchedule();renderTrainers();initSiteImages();
-  window.addEventListener('scroll',()=>{
-    document.getElementById('nav').classList.toggle('scrolled',window.scrollY>10);
+window.addEventListener('load', async () => {
+  // Сначала загружаем тренеров из Firebase
+  await loadTrainersFromDB();
+ 
+  renderNav();
+  renderSchedule();
+  renderTrainers();  // теперь покажет тренеров из Firebase
+  initSiteImages();
+ 
+  window.addEventListener('scroll', () => {
+    document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
   });
-  document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
-  // Если пользователь уже залогинен — подгружаем его записи из Firebase
-  if(user&&!user.isTrainer){
-    try{bookings=await dbGetBookings(user.phone);}catch(e){bookings=[];}
+ 
+  document.querySelectorAll('.overlay').forEach(o =>
+    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); })
+  );
+ 
+  if (user && !user.isTrainer) {
+    try { bookings = await dbGetBookings(user.phone); } catch(e) { bookings = []; }
   }
 });
 
@@ -250,19 +292,27 @@ function switchDay(day,btn){
 }
 
 /* TRAINERS */
-function renderTrainers(){
-  document.getElementById('trainers-grid').innerHTML=Object.entries(TRAINERS).map(([k,t])=>`
+function renderTrainers() {
+  const trainers = TRAINERS_FROM_DB;
+  const grid = document.getElementById('trainers-grid');
+ 
+  if (!Object.keys(trainers).length) {
+    grid.innerHTML = '<div style="color:var(--ink-muted);padding:24px">Тренеры не добавлены</div>';
+    return;
+  }
+ 
+  grid.innerHTML = Object.entries(trainers).map(([k, t]) => `
     <div class="trainer-card" onclick="openTrainerPage('${k}')">
       <div class="trainer-photo-wrap">
-        <img
-          src="images/trainers/${k}.jpg"
-          alt="${t.name}"
-          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
-          style="width:100%;height:100%;object-fit:cover;display:block"
-        >
-        <div class="trainer-photo-placeholder" style="display:none">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </div>
+        ${t.photoBase64
+          ? `<img src="${t.photoBase64}" alt="${t.name}" style="width:100%;height:100%;object-fit:cover;display:block">`
+          : `<div class="trainer-photo-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>`
+        }
       </div>
       <div class="trainer-card-info">
         <div class="trainer-card-name">${t.name}</div>
@@ -272,41 +322,55 @@ function renderTrainers(){
 }
 
 /* TRAINER PAGE */
-async function openTrainerPage(key){
-  activeTrainer=key;const t=TRAINERS[key];
-  document.getElementById('tp-name').textContent=t.name;
-  document.getElementById('tp-spec').textContent=t.spec;
-  document.getElementById('tp-avatar').innerHTML=`
-    <img src="images/trainers/${key}.jpg" alt="${t.name}"
-      style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius)"
-      onerror="this.outerHTML='<div style=\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center\\'><svg width=\\'56\\' height=\\'56\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'var(--gold)\\' stroke-width=\\'.8\\'><path d=\\'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\\'/><circle cx=\\'12\\' cy=\\'7\\' r=\\'4\\'/></svg></div>'"
-    >`;
-  document.getElementById('tp-bio').innerHTML=t.bio.split('\\n\\n').map(p=>`<p style="margin-bottom:16px">${p}</p>`).join('');
-  document.getElementById('tp-sched').innerHTML=t.schedule.map(s=>`
+async function openTrainerPage(key) {
+  activeTrainer = key;
+ 
+  // Берём из Firebase, а не из захардкоженного объекта
+  const t = TRAINERS_FROM_DB[key];
+  if (!t) return;
+ 
+  document.getElementById('tp-name').textContent = t.name;
+  document.getElementById('tp-spec').textContent = t.spec;
+ 
+  // Фото тренера
+  document.getElementById('tp-avatar').innerHTML = t.photoBase64
+    ? `<img src="${t.photoBase64}" alt="${t.name}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius)">`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width=".8">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>`;
+ 
+  document.getElementById('tp-bio').innerHTML = (t.bio || '').split('\n\n')
+    .map(p => `<p style="margin-bottom:16px">${p}</p>`).join('');
+ 
+  document.getElementById('tp-sched').innerHTML = (t.schedule || []).map(s => `
     <div class="tsched-item">
       <span class="tsched-time">${s.time}</span>
       <span class="tsched-name">${s.name}</span>
       <span class="tsched-days">${s.days}</span>
       <button class="tsched-btn" onclick="openBookingModal('${s.name}','${t.name}','${s.time}','${s.days}')">Записаться</button>
-    </div>`).join('');
-  document.getElementById('tp-reviews').innerHTML='<div class="lk-empty-state" style="padding:20px">Загружаем отзывы...</div>';
+    </div>`).join('') || '<div style="color:var(--ink-muted)">Расписание не добавлено</div>';
+ 
+  document.getElementById('tp-reviews').innerHTML = '<div class="lk-empty-state" style="padding:20px">Загружаем отзывы...</div>';
   showPage('trainer');
-  // Загружаем отзывы из Firestore
-  try{
-    const fbReviews=await dbGetReviews(key);
-    reviews[key]=fbReviews;
-    const allR=[...t.reviews,...fbReviews];
-    document.getElementById('tp-reviews').innerHTML=allR.length
-      ?allR.map(r=>`<div class="review-card"><div class="review-author">${r.author}</div><div class="review-body">${r.text}</div></div>`).join('')
-      :'<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
-  }catch(e){
-    const allR=[...t.reviews,...(reviews[key]||[])];
-    document.getElementById('tp-reviews').innerHTML=allR.length
-      ?allR.map(r=>`<div class="review-card"><div class="review-author">${r.author}</div><div class="review-body">${r.text}</div></div>`).join('')
-      :'<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
+ 
+  // Загружаем отзывы из Firebase
+  try {
+    const fbReviews = await dbGetReviews(key);
+    const allR = [...(t.reviews || []), ...fbReviews];
+    document.getElementById('tp-reviews').innerHTML = allR.length
+      ? allR.map(r => `
+          <div class="review-card">
+            <div class="review-author">${r.author}</div>
+            <div class="review-body">${r.text}</div>
+          </div>`).join('')
+      : '<div class="lk-empty-state">Пока нет отзывов. Будьте первыми!</div>';
+  } catch(e) {
+    document.getElementById('tp-reviews').innerHTML = '<div class="lk-empty-state">Пока нет отзывов.</div>';
   }
 }
-
 /* TRAINING MODAL */
 function openTraining(key,trainer,time){
   const t=TRAININGS[key];if(!t)return;
@@ -419,15 +483,64 @@ function switchAuth(v){
   document.getElementById('auth-login').style.display=v==='login'?'block':'none';
   document.getElementById('auth-register').style.display=v==='register'?'block':'none';
 }
-async function doLogin(){
-  const raw=getRawPhone(document.getElementById('li-phone').value);
-  if(raw.length<11){toast('Введите номер телефона');return;}
-  // Проверяем тренерский аккаунт
-  const trKey=TRAINER_PHONES[raw];
-  if(trKey){
-    user={name:TRAINERS[trKey].name,phone:raw,isTrainer:true,trainerKey:trKey};
-    save();closeOv('ov-auth');renderNav();showPage('tc');return;
+async function doLogin() {
+  const phone = getRawPhone(document.getElementById('li-phone').value);
+  if (phone.length < 11) { toast('Введите номер телефона'); return; }
+ 
+  const btn = document.querySelector('#ov-auth .form-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Загрузка...'; }
+ 
+  try {
+    // 1. Проверяем — тренер ли это (ищем в коллекции trainers по телефону)
+    await loadTrainersFromDB();
+    const trainerEntry = Object.entries(TRAINERS_FROM_DB).find(([key, t]) => t.phone === phone);
+ 
+    if (trainerEntry) {
+      const [trainerKey, trainerData] = trainerEntry;
+      user = {
+        name: trainerData.name,
+        phone,
+        isTrainer: true,
+        trainerKey,
+      };
+      save();
+      closeOv('ov-auth');
+      renderNav();
+      showPage('tc');
+      if (btn) { btn.disabled = false; btn.textContent = 'Войти'; }
+      return;
+    }
+ 
+    // 2. Ищем как обычного клиента в Firestore
+    const found = await dbGetUser(phone);
+    if (!found) {
+      toast('Пользователь не найден. Зарегистрируйтесь.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Войти'; }
+      return;
+    }
+ 
+    user = { ...found, phone };
+    bookings = await dbGetBookings(phone);
+    save();
+    closeOv('ov-auth');
+    renderNav();
+    showPage('lk');
+ 
+  } catch(e) {
+    console.error(e);
+    // Fallback на localStorage
+    const users = JSON.parse(localStorage.getItem('xk_users') || '[]');
+    const found = users.find(u => u.phone === phone);
+    if (!found) { toast('Пользователь не найден'); if (btn) { btn.disabled = false; btn.textContent = 'Войти'; } return; }
+    user = found;
+    save();
+    closeOv('ov-auth');
+    renderNav();
+    showPage('lk');
   }
+ 
+  if (btn) { btn.disabled = false; btn.textContent = 'Войти'; }
+}
   // Ищем в Firestore
   try{
     showLoading(true);
@@ -603,71 +716,73 @@ async function cancelBook(i){
 }
 
 /* TC */
-async function renderTC(){
-  if(!user||!user.isTrainer)return;
-  const t=TRAINERS[user.trainerKey];
-  document.getElementById('tc-greeting').textContent=t.name;
-  document.getElementById('tc-role').textContent=t.spec;
-  const list=document.getElementById('tc-list');
-  list.innerHTML='<div class="lk-empty-state">Загружаем данные...</div>';
-  // запоминаем какие группы были раскрыты, чтобы не сбрасывать при перерисовке
-  const openGroups=new Set();
-  document.querySelectorAll('.tc-clients-list.open').forEach(el=>openGroups.add(el.id));
-  // Загружаем реальных клиентов из Firestore, группируем по (тренировка+дата)
-  const scheduleWithClients=await Promise.all(t.schedule.map(async(s)=>{
-    try{
-      const clients=await dbGetTrainingBookings(t.name,s.name);
-      // сортируем по дате тренировки, ближайшие сверху
-      clients.sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
-      return{...s,clients};
-    }catch(e){return{...s,clients:[]};}
+async function renderTC() {
+  if (!user || !user.isTrainer) return;
+ 
+  // Берём данные тренера из Firebase
+  const t = TRAINERS_FROM_DB[user.trainerKey];
+  if (!t) {
+    // Если нет данных — пробуем перезагрузить
+    await loadTrainersFromDB();
+  }
+  const trainer = TRAINERS_FROM_DB[user.trainerKey] || {};
+ 
+  document.getElementById('tc-greeting').textContent = trainer.name || user.name;
+  document.getElementById('tc-role').textContent = trainer.spec || '';
+ 
+  const list = document.getElementById('tc-list');
+  list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
+ 
+  const openGroups = new Set();
+  document.querySelectorAll('.tc-clients-list.open').forEach(el => openGroups.add(el.id));
+ 
+  const schedule = trainer.schedule || [];
+ 
+  const scheduleWithClients = await Promise.all(schedule.map(async (s, i) => {
+    try {
+      const clients = await dbGetTrainingBookings(trainer.name, s.name);
+      clients.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
+      return { ...s, clients };
+    } catch(e) {
+      return { ...s, clients: [] };
+    }
   }));
-  list.innerHTML=scheduleWithClients.map((s,i)=>`
+ 
+  list.innerHTML = scheduleWithClients.map((s, i) => `
     <div class="tc-group">
       <div class="tc-group-header" onclick="toggleTC(${i})">
         <span class="tc-group-time">${s.time}</span>
-        <div><div class="tc-group-name">${s.name}</div><div class="tc-group-days">${s.days}</div></div>
+        <div>
+          <div class="tc-group-name">${s.name}</div>
+          <div class="tc-group-days">${s.days}</div>
+        </div>
         <span class="tc-group-count">${s.clients.length} клиентов</span>
       </div>
-      <div class="tc-clients-list${openGroups.has('tc-cl-'+i)?' open':''}" id="tc-cl-${i}">
+      <div class="tc-clients-list${openGroups.has('tc-cl-' + i) ? ' open' : ''}" id="tc-cl-${i}">
         ${s.clients.length
-          ?s.clients.map(c=>`
+          ? s.clients.map(c => `
             <div class="tc-client-row-full" data-booking-id="${c.id}">
               <div class="tc-client-info">
-                <div class="tc-client-name">${c.userName||'—'}</div>
-                <div class="tc-client-meta">+${c.phone||''}${c.trainingDate?' · '+formatDateShort(c.trainingDate):''}</div>
+                <div class="tc-client-name">${c.userName || '—'}</div>
+                <div class="tc-client-meta">+${c.phone || ''}${c.trainingDate ? ' · ' + formatDateShort(c.trainingDate) : ''}</div>
               </div>
               <div class="tc-attend-buttons">
-                <button class="tc-attend-btn tc-attend-yes${c.status==='attended'?' active':''}" onclick="markAttendance('${c.id}','attended',this)" title="Пришла">
+                <button class="tc-attend-btn tc-attend-yes${c.status === 'attended' ? ' active' : ''}"
+                  onclick="markAttendance('${c.id}','attended',this)" title="Пришла">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
-                <button class="tc-attend-btn tc-attend-no${c.status==='missed'?' active':''}" onclick="markAttendance('${c.id}','missed',this)" title="Не пришла">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <button class="tc-attend-btn tc-attend-no${c.status === 'missed' ? ' active' : ''}"
+                  onclick="markAttendance('${c.id}','missed',this)" title="Не пришла">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
                 </button>
               </div>
             </div>`).join('')
-          :'<div style="padding:16px 24px;font-size:14px;color:var(--ink-muted)">Записей пока нет</div>'
+          : '<div style="padding:16px 24px;font-size:14px;color:var(--ink-muted)">Записей пока нет</div>'
         }
       </div>
     </div>`).join('');
-}
-function toggleTC(i){document.getElementById('tc-cl-'+i).classList.toggle('open')}
-
-async function markAttendance(bookingId,status,btnEl){
-  // Оптимистично обновляем именно эту карточку клиента — без полной перерисовки списка
-  const row=btnEl?btnEl.closest('.tc-client-row-full'):null;
-  if(row){
-    row.querySelector('.tc-attend-yes').classList.toggle('active',status==='attended');
-    row.querySelector('.tc-attend-no').classList.toggle('active',status==='missed');
-  }
-  try{
-    await dbUpdateBookingStatus(bookingId,status);
-    toast(status==='attended'?'Отмечено: пришла':'Отмечено: не пришла — занятие списано');
-  }catch(e){
-    console.error(e);
-    toast('Не удалось сохранить отметку');
-    renderTC();
-  }
 }
 
 /* UTILS */
