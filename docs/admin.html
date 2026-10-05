@@ -325,7 +325,13 @@ firebase.initializeApp({
 });
 const db=firebase.firestore();
 const storage=firebase.storage();
-
+// Приводит телефон к виду 7XXXXXXXXXX (только цифры)
+function normalizePhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 10) d = '7' + d;
+  if (d.length === 11 && d.startsWith('8')) d = '7' + d.slice(1);
+  return d;
+}
 // ── AUTH ──────────────────────────────────
 const PW_KEY='kult_admin_pw';
 const DEFAULT_PW='kult2024admin';
