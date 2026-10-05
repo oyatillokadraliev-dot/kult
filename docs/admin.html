@@ -443,23 +443,66 @@ async function delSlot(){
   await db.collection('schedule').doc(id).delete();
   await loadSchedule();closeM('m-slot');toast('Слот удалён');
 }
-
+// Сжатие картинки: уменьшает сторону до maxSize и кодирует в JPEG
+function compressImageToDataUrl(file, maxSize = 300, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не удалось прочитать фото')); };
+    img.src = url;
+  });
+}
 // ── TRAINERS ──────────────────────────────
-let trPhotoBase64='';
+let trPhotoBase64 = '';
 
-function previewPhoto(input){
-  const file=input.files[0];
-  if(!file)return;
-  if(file.size>2*1024*1024){toast('Файл слишком большой (макс 2MB)');return;}
-  const reader=new FileReader();
-  reader.onload=e=>{
-    trPhotoBase64=e.target.result;
-    const img=document.getElementById('tr-photo-preview');
-    img.src=trPhotoBase64;
-    img.style.display='block';
-    document.getElementById('photo-upload-text').style.display='none';
-  };
-  reader.readAsDataURL(file);
+// Сжимает фото до maxSize по большей стороне и кодирует в JPEG
+function compressImageToDataUrl(file, maxSize = 300, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Не удалось прочитать фото'));
+    };
+    img.src = url;
+  });
+}
+
+async function previewPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toast('Выберите файл изображения');
+    return;
+  }
+  try {
+    trPhotoBase64 = await compressImageToDataUrl(file);
+    const img = document.getElementById('tr-photo-preview');
+    img.src = trPhotoBase64;
+    img.style.display = 'block';
+    document.getElementById('photo-upload-text').style.display = 'none';
+  } catch (e) {
+    console.error(e);
+    toast('Не удалось обработать фото');
+  }
 }
 
 async function loadTrainers(){
@@ -482,6 +525,7 @@ async function loadTrainers(){
 }
 
 function openTrainer(id){
+    trPhotoBase64 = '';
   const t=id?trainersCache[id]:null;
   trPhotoBase64=t?.photoBase64||'';
   document.getElementById('tr-id').value=id||'';
@@ -499,28 +543,38 @@ function openTrainer(id){
   openM('m-trainer');
 }
 
-async function saveTrainer(){
-  const name=document.getElementById('tr-name').value.trim();
-  const phone=document.getElementById('tr-phone').value.replace(/\D/g,'');
-  const spec=document.getElementById('tr-spec').value.trim();
-  const bio=document.getElementById('tr-bio').value.trim();
-  if(!name||!phone)return toast('Введи имя и телефон');
+async function saveTrainer() {
+  const name = document.getElementById('tr-name').value.trim();
+  const phone = normalizePhone(document.getElementById('tr-phone').value);
+  const spec = document.getElementById('tr-spec').value.trim();
+  const bio = document.getElementById('tr-bio').value.trim();
 
-  const existId=document.getElementById('tr-id').value;
-  const id=existId||(name.toLowerCase().replace(/\s+/g,'').replace(/[^a-zа-яё]/gi,'').slice(0,8)+Date.now().toString().slice(-4));
+  if (!name) return toast('Введите имя тренера');
+  if (phone.length !== 11) return toast('Телефон должен содержать 11 цифр');
 
-  const data={name,phone,spec,bio};
-  if(trPhotoBase64)data.photoBase64=trPhotoBase64;
+  const existingId = document.getElementById('tr-id').value;
+  const id = existingId || phone; // ID = телефон, чтобы не было дублей
 
-  await db.collection('trainers').doc(id).set(data,{merge:true});
-  await loadTrainers();closeM('m-trainer');toast('✅ Тренер сохранён');
-}
+  // Если фото не выбрали заново, оставляем старое
+  const old = existingId ? trainersCache[existingId] : null;
+  const photoBase64 = trainerPhotoData || old?.photoBase64 || null;
 
-async function delTrainer(){
-  const id=document.getElementById('tr-id').value;
-  if(!id||!confirm('Удалить тренера?'))return;
-  await db.collection('trainers').doc(id).delete();
-  await loadTrainers();closeM('m-trainer');toast('Тренер удалён');
+  if (photoBase64 && photoBase64.length > 900000) {
+    return toast('Фото слишком большое, выберите другое');
+  }
+
+  try {
+    await db.collection('trainers').doc(id).set({
+      name, phone, spec, bio, photoBase64,
+    }, { merge: true });
+    trainerPhotoData = null;
+    await loadTrainers();
+    closeM('m-trainer');
+    toast('✅ Тренер сохранён');
+  } catch (e) {
+    console.error(e);
+    toast('Ошибка сохранения: ' + e.message);
+  }
 }
 
 // ── CLIENTS ───────────────────────────────
