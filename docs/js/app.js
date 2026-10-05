@@ -116,7 +116,14 @@ async function loadTrainersFromDB() {
   }
 }
 
-/* Расписание из коллекции schedule, сгруппированное по дням */
+/* Запасное расписание: используется, если коллекция schedule пуста.
+   Только Пн / Ср / Пт, как на картинке с новым временем. */
+const FALLBACK_SCHEDULE_MWF = [
+  { time: '17:00', name: 'Силовая тренировка', trainer: 'Ксюша', key: 'silovaya' },
+  { time: '18:15', name: 'TRX / Функциональный тренинг', trainer: 'Ксюша', key: 'trx' },
+  { time: '19:30', name: 'CrossFit', trainer: 'Вика', key: 'crossfit' },
+];
+
 async function loadScheduleFromDB() {
   try {
     const db = await getDB();
@@ -127,17 +134,23 @@ async function loadScheduleFromDB() {
       const s = doc.data();
       if (!s.time || !s.name) return;
       const days = GROUP_DAYS[s.group] || [];
-      const trainerName = s.trainer || '';
       days.forEach((dayKey) => {
         byDay[dayKey].push({
           id: doc.id,
           time: s.time,
           name: s.name,
-          trainer: trainerName,
+          trainer: s.trainer || '',
           key: s.key || null,
         });
       });
     });
+
+    // Если в базе пусто — показываем запасное расписание Пн/Ср/Пт
+    if (snap.empty) {
+      ['mon', 'wed', 'fri'].forEach((dayKey) => {
+        byDay[dayKey] = FALLBACK_SCHEDULE_MWF.map((s) => ({ ...s, id: null }));
+      });
+    }
 
     Object.values(byDay).forEach((arr) => arr.sort((a, b) => a.time.localeCompare(b.time)));
     SCHEDULE = byDay;
