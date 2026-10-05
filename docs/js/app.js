@@ -28,26 +28,39 @@ let TRAINERS_FROM_DB = {};
  
 async function loadTrainersFromDB() {
   try {
-    const db = await getDB();
-    const snap = await db.collection('trainers').get();
+    const dbInst = await getDB();
+    const snap = await dbInst.collection('trainers').get();
     TRAINERS_FROM_DB = {};
     snap.docs.forEach(doc => {
       const t = doc.data();
-      TRAINERS_FROM_DB[doc.id] = {
-        name: t.name || '',
-        spec: t.spec || '',
-        bio: t.bio || '',
+      const key = doc.id;
+      // Берём расписание из Firebase, или из захардкоженного TRAINERS как fallback
+      const fallback = TRAINERS[key] || {};
+      TRAINERS_FROM_DB[key] = {
+        name: t.name || fallback.name || '',
+        spec: t.spec || fallback.spec || '',
+        bio: t.bio || fallback.bio || '',
         phone: t.phone || '',
         photoBase64: t.photoBase64 || null,
-        schedule: t.schedule || [],
-        reviews: t.reviews || [],
+        schedule: (t.schedule && t.schedule.length) ? t.schedule : (fallback.schedule || []),
+        reviews: (t.reviews && t.reviews.length) ? t.reviews : (fallback.reviews || []),
       };
     });
-    console.log('Тренеры загружены из Firebase:', Object.keys(TRAINERS_FROM_DB).length);
+    // Если Firebase вернул 0 тренеров — используем захардкоженных
+    if (Object.keys(TRAINERS_FROM_DB).length === 0) {
+      console.log('Firebase: тренеры не найдены, используем локальные данные');
+      Object.entries(TRAINERS).forEach(([key, t]) => {
+        TRAINERS_FROM_DB[key] = { ...t, phone: '', photoBase64: null };
+      });
+    } else {
+      console.log('Тренеры загружены из Firebase:', Object.keys(TRAINERS_FROM_DB).length);
+    }
   } catch(e) {
-    console.error('Ошибка загрузки тренеров:', e);
-    // Fallback на пустой объект
-    TRAINERS_FROM_DB = {};
+    console.error('Ошибка загрузки тренеров, используем локальные:', e);
+    // Fallback на захардкоженных тренеров
+    Object.entries(TRAINERS).forEach(([key, t]) => {
+      TRAINERS_FROM_DB[key] = { ...t, phone: '', photoBase64: null };
+    });
   }
 }
  
@@ -558,6 +571,7 @@ async function doLogin() {
     user=found;bookings=JSON.parse(localStorage.getItem('xk_bookings_'+raw)||'[]');
     save();closeOv('ov-auth');renderNav();showPage('lk');
   }finally{showLoading(false);}
+
 
 async function doRegister(){
   const name=document.getElementById('rg-name').value.trim();
