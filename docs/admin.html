@@ -559,21 +559,22 @@ async function saveTrainer() {
   if (phone.length !== 11) return toast('Телефон должен содержать 11 цифр');
 
   const existingId = document.getElementById('tr-id').value;
-  const id = existingId || phone; // ID = телефон, чтобы не было дублей
+  const id = existingId || phone;
 
-  // Если фото не выбрали заново, оставляем старое
+  // Фото: новое, если выбрано, иначе старое при редактировании
   const old = existingId ? trainersCache[existingId] : null;
-  const photoBase64 = trainerPhotoData || old?.photoBase64 || null;
+  const photoBase64 = trPhotoBase64 || old?.photoBase64 || null;
 
   if (photoBase64 && photoBase64.length > 900000) {
     return toast('Фото слишком большое, выберите другое');
   }
 
   try {
-    await db.collection('trainers').doc(id).set({
-      name, phone, spec, bio, photoBase64,
-    }, { merge: true });
-    trainerPhotoData = null;
+    await db.collection('trainers').doc(id).set(
+      { name, phone, spec, bio, photoBase64 },
+      { merge: true }
+    );
+    trPhotoBase64 = '';
     await loadTrainers();
     closeM('m-trainer');
     toast('✅ Тренер сохранён');
