@@ -59,6 +59,7 @@ let CONTACTS = { ...DEFAULT_CONTACTS };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
+const jsArg = (v) => esc(JSON.stringify(v));
 
 const fmtPrice = (n) => Number(n).toLocaleString('ru-RU').replace(/,/g, ' ') + ' ₽';
 
@@ -454,7 +455,7 @@ function renderSchedule() {
     const items = SCHEDULE[day] || [];
     el.innerHTML = items.length
       ? items.map((s) => `
-        <div class="sched-card" onclick="openTraining(${JSON.stringify(s.key || '')}, ${JSON.stringify(s.name)}, ${JSON.stringify(s.trainer)}, ${JSON.stringify(s.time)})">
+            <div class="sched-card" onclick="openTraining(${jsArg(s.key || '')}, ${jsArg(s.name)}, ${jsArg(s.trainer)}, ${jsArg(s.time)})">
           <span class="sched-time">${esc(s.time)}</span>
           <div>
             <div class="sched-info-name">${esc(s.name)}</div>
@@ -537,13 +538,13 @@ async function openTrainerPage(key) {
     .map((p) => `<p style="margin-bottom:16px">${p}</p>`)
     .join('');
 
-  document.getElementById('tp-sched').innerHTML = (t.schedule || []).map((s) => `
-    <div class="tsched-item">
-      <span class="tsched-time">${esc(s.time)}</span>
-      <span class="tsched-name">${esc(s.name)}</span>
-      <span class="tsched-days">${esc(s.days)}</span>
-      <button class="tsched-btn" onclick="openBookingModal(${JSON.stringify(s.name)}, ${JSON.stringify(t.name)}, ${JSON.stringify(s.time)}, ${JSON.stringify(s.days)})">Записаться</button>
-    </div>`).join('') || '<div style="color:var(--ink-muted)">Расписание не добавлено</div>';
+document.getElementById('tp-sched').innerHTML = (t.schedule || []).map((s) => `
+  <div class="tsched-item">
+    <span class="tsched-time">${esc(s.time)}</span>
+    <span class="tsched-name">${esc(s.name)}</span>
+    <span class="tsched-days">${esc(s.days)}</span>
+    <button class="tsched-btn" onclick="openBookingModal(${jsArg(s.name)}, ${jsArg(t.name)}, ${jsArg(s.time)}, ${jsArg(s.days)})">Записаться</button>
+  </div>`).join('') || '<div style="color:var(--ink-muted)">Расписание не добавлено</div>';
 
   document.getElementById('tp-reviews').innerHTML = '<div class="lk-empty-state" style="padding:20px">Загружаем отзывы...</div>';
   showPage('trainer');
@@ -580,7 +581,7 @@ function openTraining(key, name, trainer, time) {
     ${t.includes ? `<div class="t-block"><h4>Что входит</h4><p>${esc(t.includes)}</p></div>` : ''}
     ${t.who ? `<div class="t-block"><h4>Для кого</h4><p>${esc(t.who)}</p></div>` : ''}
     <div class="t-block"><h4>Тренер</h4><p>${esc(trainer)}</p></div>
-    <button class="form-submit" style="margin-top:20px" onclick="closeOv('ov-training');openBookingModal(${JSON.stringify(name)}, ${JSON.stringify(trainer)}, ${JSON.stringify(time)}, ${JSON.stringify(days)})">Записаться</button>`;
+      <button class="form-submit" style="margin-top:20px" onclick="closeOv('ov-training');openBookingModal(${jsArg(name)}, ${jsArg(trainer)}, ${jsArg(time)}, ${jsArg(days)})">Записаться</button>`;
   openOv('ov-training');
 }
 
