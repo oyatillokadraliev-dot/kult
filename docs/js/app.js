@@ -235,12 +235,11 @@ async function dbUpdateBookingStatus(id, status) {
   await fb().updateDoc(fb().doc(d, 'bookings', id), { status });
 }
 
-async function dbGetTrainingBookings(trainerName, trainingName) {
+async function dbGetTrainerBookings(trainerKey) {
   const d = await getDB();
   const q = fb().query(
     fb().collection(d, 'bookings'),
-    fb().where('trainer', '==', trainerName),
-    fb().where('name', '==', trainingName)
+    fb().where('trainerKey', '==', trainerKey)
   );
   const snap = await fb().getDocs(q);
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -631,7 +630,20 @@ async function confirmBook() {
     toast('Сначала выберите абонемент в личном кабинете');
     return;
   }
- 
+
+   const trainerKey = Object.keys(TRAINERS_FROM_DB).find(
+  (k) => TRAINERS_FROM_DB[k].name === pendingBook.trainer
+) || null;
+
+const bookingData = {
+  ...pendingBook,
+  trainerKey,
+  phone: user.phone,
+  userName: user.name,
+  status: 'upcoming',
+  trainingDate: nextDate,
+};
+   
   // Проверяем остаток занятий
   const left = user.sessionsLeft;
   if (left !== null && left !== undefined && left <= 0) {
@@ -990,30 +1002,33 @@ async function renderTC() {
   const list = document.getElementById('tc-list');
   list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
 
-  const schedule = trainer.schedule || [];
-  const withClients = await Promise.all(schedule.map(async (s) => {
-    try {
-      const clients = await dbGetTrainingBookings(trainer.name, s.name);
-      clients.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
-      return { ...s, clients };
-    } catch (e) {
-      return { ...s, clients: [] };
-    }
-  }));
+  // Все записи этого тренера одним запросом
+  const all = await dbGetTrainerBookings(user.trainerKey);
+  all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
-  list.innerHTML = withClients.map((s, i) => `
-    <div class="tc-group">
-      <div class="tc-group-header" onclick="toggleTC(${i})">
-        <span class="tc-group-time">${esc(s.time)}</span>
-        <div>
-          <div class="tc-group-name">${esc(s.name)}</div>
-          <div class="tc-group-days">${esc(s.days)}</div>
+  // Группируем по времени и названию
+  const groups = {};
+  all.forEach((b) => {
+    const key = `${b.time}|${b.name}`;
+    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: b.days, clients: [] };
+    groups[key].clients.push(b);
+  });
+
+  const items = Object.values(groups).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+  list.innerHTML = items.length
+    ? items.map((s, i) => `
+      <div class="tc-group">
+        <div class="tc-group-header" onclick="toggleTC(${i})">
+          <span class="tc-group-time">${esc(s.time)}</span>
+          <div>
+            <div class="tc-group-name">${esc(s.name)}</div>
+            <div class="tc-group-days">${esc(s.days || '')}</div>
+          </div>
+          <span class="tc-group-count">${s.clients.length} клиентов</span>
         </div>
-        <span class="tc-group-count">${s.clients.length} клиентов</span>
-      </div>
-      <div class="tc-clients-list" id="tc-cl-${i}">
-        ${s.clients.length
-          ? s.clients.map((c) => `
+        <div class="tc-clients-list" id="tc-cl-${i}">
+          ${s.clients.map((c) => `
             <div class="tc-client-row-full" data-booking-id="${esc(c.id)}">
               <div class="tc-client-info">
                 <div class="tc-client-name">${esc(c.userName || '—')}</div>
@@ -1031,10 +1046,10 @@ async function renderTC() {
                   </svg>
                 </button>
               </div>
-            </div>`).join('')
-          : '<div style="padding:16px 24px;font-size:14px;color:var(--ink-muted)">Записей пока нет</div>'}
-      </div>
-    </div>`).join('');
+            </div>`).join('')}
+        </div>
+      </div>`).join('')
+    : '<div class="lk-empty-state">Записей пока нет</div>';
 }
 
 function toggleTC(i) {
