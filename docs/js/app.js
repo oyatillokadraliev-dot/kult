@@ -624,30 +624,69 @@ function openBookingModal(name, trainer, time, days) {
 async function confirmBook() {
   if (!pendingBook) return;
   if (!user) { toast('Войдите, чтобы записаться'); return; }
-
-  // Проверка абонемента: без активного абонемента записываться нельзя
-  if (!user.isTrainer && !user.abonement) {
+ 
+  // Проверяем абонемент
+  if (!user.abonement) {
     toast('Сначала выберите абонемент в личном кабинете');
     return;
   }
-
+ 
+  // Проверяем остаток занятий
+  const left = user.sessionsLeft;
+  if (left !== null && left !== undefined && left <= 0) {
+    toast('Занятия по абонементу закончились. Обратитесь к администратору.');
+    return;
+  }
+ 
   setBtn('btn-confirm-book', 'Записываем...', true);
   try {
     const nextDate = nextDateForDays(pendingBook.days, pendingBook.time);
     const bookingData = {
       ...pendingBook,
-      phone: user.phone,
-      userName: user.name,
-      status: 'upcoming',
+      phone:        user.phone,
+      userName:     user.name,
+      status:       'upcoming',
       trainingDate: nextDate,
     };
-    const id = await dbAddBooking(bookingData);
-    bookings.push({ ...bookingData, id });
+ 
+    // Транзакция: добавляем запись + уменьшаем sessionsLeft на 1
+    const db = await getDB();
+    const userRef = db.collection('users').doc(user.phone);
+    const bookRef = db.collection('bookings').doc();
+ 
+    await db.runTransaction(async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) throw new Error('Пользователь не найден');
+ 
+      const currentLeft = userSnap.data().sessionsLeft;
+      if (currentLeft !== null && currentLeft !== undefined && currentLeft <= 0) {
+        throw new Error('no_sessions');
+      }
+ 
+      tx.set(bookRef, { ...bookingData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+ 
+      // Уменьшаем счётчик только если он задан
+      if (currentLeft !== null && currentLeft !== undefined) {
+        tx.update(userRef, { sessionsLeft: currentLeft - 1 });
+      }
+    });
+ 
+    const newLeft = (left !== null && left !== undefined) ? left - 1 : null;
+    user.sessionsLeft = newLeft;
+    save();
+ 
+    bookings.push({ ...bookingData, id: bookRef.id });
     closeOv('ov-booking');
-    toast('Вы записаны! Напоминание придёт в Telegram за 10 часов');
+    toast(newLeft !== null
+      ? `Вы записаны! Осталось занятий: ${newLeft}`
+      : 'Вы записаны! Напоминание придёт в Telegram');
   } catch (e) {
-    console.error(e);
-    toast('Не удалось записаться. Попробуйте ещё раз.');
+    if (e.message === 'no_sessions') {
+      toast('Занятия по абонементу закончились. Обратитесь к администратору.');
+    } else {
+      console.error(e);
+      toast('Не удалось записаться. Попробуйте ещё раз.');
+    }
   } finally {
     setBtn('btn-confirm-book', 'Подтвердить запись', false);
     pendingBook = null;
@@ -770,62 +809,92 @@ function renderLK() {
   if (!user) return;
   document.getElementById('lk-greeting').textContent = `Привет, ${user.name.split(' ')[0]}!`;
   document.getElementById('lk-phone').textContent = '+' + user.phone;
-
+ 
+  const ab     = user.abonement ? ABONEMENTS.find((a) => a.id === user.abonement) : null;
+  const left   = user.sessionsLeft;    // число или null
+  const hasAb  = !!ab;
+ 
+  // Значок абонемента в шапке
   const abEl = document.getElementById('lk-header-ab');
-  const ab = user.abonement ? ABONEMENTS.find((a) => a.id === user.abonement) : null;
-  abEl.innerHTML = ab
-    ? `<div class="lk-ab-badge"><div class="lk-ab-badge-dot"></div><span class="lk-ab-badge-text">${esc(ab.label)}</span></div>`
+  abEl.innerHTML = hasAb
+    ? `<div class="lk-ab-badge">
+        <div class="lk-ab-badge-dot"></div>
+        <span class="lk-ab-badge-text">${esc(ab.label)}</span>
+       </div>`
     : '';
-
+ 
+  // Сайдбар
   const sb = document.getElementById('lk-sidebar');
-  if (ab) {
-    const used = bookings.filter((b) => b.status === 'attended').length;
-    const total = ab.total;
+  if (hasAb) {
+    const total   = ab.total;
+    const used    = (left !== null && left !== undefined)
+      ? total - left          // сколько использовано
+      : bookings.filter((b) => b.status === 'attended').length;
+    const pct     = Math.min(100, Math.round(Math.max(0, used) / total * 100));
+    const leftStr = (left !== null && left !== undefined) ? left : '—';
+ 
     sb.innerHTML = `
       <div class="lk-ab-active">
         <div class="lk-ab-tag">Активный абонемент</div>
         <div class="lk-ab-title">${esc(ab.label)}</div>
-        <div class="lk-ab-track"><div class="lk-ab-fill" style="width:${Math.min(100, Math.round(used / total * 100))}%"></div></div>
-        <div class="lk-ab-meta">Посещено ${used} из ${total} занятий</div>
+        <div class="lk-ab-track">
+          <div class="lk-ab-fill" style="width:${pct}%"></div>
+        </div>
+        <div class="lk-ab-meta">Осталось занятий: <b>${leftStr}</b> из ${total}</div>
         <button class="lk-ab-change" onclick="renderAbSelect()">Сменить абонемент</button>
       </div>`;
   } else {
     sb.innerHTML = renderAbSelectHTML();
   }
-
+ 
+  // Telegram-баннер
   const tgBanner = document.getElementById('lk-telegram-banner');
   tgBanner.innerHTML = !user.telegramChatId ? `
     <div class="tg-banner">
       <div class="tg-banner-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#29b6f6" stroke-width="1.8"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#29b6f6" stroke-width="1.8">
+          <path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/>
+        </svg>
       </div>
       <div style="flex:1">
         <div class="tg-banner-title">Подключи уведомления в Telegram</div>
-        <div class="tg-banner-text">Напоминания о тренировках за 10 часов и подтверждение записи — прямо в мессенджере</div>
+        <div class="tg-banner-text">Напоминания о тренировках за 10 часов</div>
       </div>
-      <a href="https://t.me/${esc(TELEGRAM_BOT_USERNAME)}?start=${esc(user.phone)}" target="_blank" rel="noopener noreferrer" class="tg-banner-btn">Подключить</a>
+      <a href="https://t.me/${esc(TELEGRAM_BOT_USERNAME)}?start=${esc(user.phone)}"
+         target="_blank" rel="noopener noreferrer" class="tg-banner-btn">Подключить</a>
     </div>` : '';
-
-  const list = document.getElementById('lk-list');
-  const sorted = [...bookings].sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
+ 
+  // Список записей
+  const list   = document.getElementById('lk-list');
+  const sorted = [...bookings].sort((a, b) =>
+    new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0)
+  );
+ 
   list.innerHTML = sorted.length
     ? sorted.map((b) => {
         const status = b.status || 'upcoming';
-        const statusBadge =
+        const badge  =
           status === 'attended' ? '<span class="lk-status-badge lk-status-attended">Посещено</span>' :
-          status === 'missed'   ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>' :
+          status === 'missed'   ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>'   :
           '<span class="lk-status-badge lk-status-upcoming">Предстоит</span>';
         const label = Object.values(TRAININGS).find((x) => x.name === b.name)?.name || b.name;
         return `
         <div class="lk-booking-row">
-          <div class="lk-booking-time">${esc(b.time || '—')}${b.trainingDate ? `<div class="lk-booking-date">${esc(formatDateShort(b.trainingDate))}</div>` : ''}</div>
+          <div class="lk-booking-time">
+            ${esc(b.time || '—')}
+            ${b.trainingDate
+              ? `<div class="lk-booking-date">${esc(formatDateShort(b.trainingDate))}</div>`
+              : ''}
+          </div>
           <div>
             <div class="lk-booking-name">${esc(label)}</div>
             <div class="lk-booking-trainer">${esc(b.trainer)}${b.days ? ' · ' + esc(b.days) : ''}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
-            ${statusBadge}
-            ${status === 'upcoming' ? `<button class="lk-cancel-btn" onclick="cancelBook('${esc(b.id)}')">Отменить</button>` : ''}
+            ${badge}
+            ${status === 'upcoming'
+              ? `<button class="lk-cancel-btn" onclick="cancelBook('${esc(b.id)}')">Отменить</button>`
+              : ''}
           </div>
         </div>`;
       }).join('')
@@ -878,10 +947,29 @@ async function saveAb() {
 async function cancelBook(id) {
   if (!id || !confirm('Отменить запись?')) return;
   try {
-    await dbDeleteBooking(id);
+    const db      = await getDB();
+    const bookRef = db.collection('bookings').doc(id);
+    const userRef = db.collection('users').doc(user.phone);
+ 
+    await db.runTransaction(async (tx) => {
+      const bookSnap = await tx.get(bookRef);
+      if (!bookSnap.exists) return;
+      const userSnap = await tx.get(userRef);
+ 
+      tx.delete(bookRef);
+ 
+      // Возвращаем занятие если счётчик задан
+      const currentLeft = userSnap.exists ? userSnap.data().sessionsLeft : null;
+      if (currentLeft !== null && currentLeft !== undefined) {
+        tx.update(userRef, { sessionsLeft: currentLeft + 1 });
+        user.sessionsLeft = currentLeft + 1;
+        save();
+      }
+    });
+ 
     bookings = bookings.filter((b) => b.id !== id);
     renderLK();
-    toast('Запись отменена');
+    toast('Запись отменена, занятие возвращено');
   } catch (e) {
     console.error(e);
     toast('Не удалось отменить запись');
