@@ -820,20 +820,22 @@ async function saveClient() {
   if (!name) return toast('Введите имя клиента');
   if (phone.length !== 11) return toast('Введите корректный номер телефона');
 
-  if (mode === 'add') {
-    const ex = await db.collection('users').doc(phone).get();
-    if (ex.exists) return toast('Клиент с таким номером уже есть');
-  }
-
-  await safe(() => db.collection('users').doc(phone).set({
+  const data = {
     name,
     phone,
     abonement: ab || null,
     sessionsLeft,
     addedByAdmin: true,
     activated: true,
-    createdAt: mode === 'add' ? new Date().toISOString() : undefined,
-  }, { merge: true }));
+  };
+
+  if (mode === 'add') {
+    const ex = await db.collection('users').doc(phone).get();
+    if (ex.exists) return toast('Клиент с таким номером уже есть');
+    data.createdAt = new Date().toISOString();
+  }
+
+  await safe(() => db.collection('users').doc(phone).set(data, { merge: true }));
 
   closeM('m-client');
   await loadClients();
