@@ -145,14 +145,20 @@
       <h2>Расписание</h2>
       <p>Выбери день, направление и тренера — и запишись прямо здесь</p>
     </div>
-   <div class="day-tabs-wrap">
+<div class="day-tabs-wrap">
   <button class="day-tab active" onclick="switchDay('mon',this)">Понедельник</button>
+  <button class="day-tab" onclick="switchDay('tue',this)">Вторник</button>
   <button class="day-tab" onclick="switchDay('wed',this)">Среда</button>
+  <button class="day-tab" onclick="switchDay('thu',this)">Четверг</button>
   <button class="day-tab" onclick="switchDay('fri',this)">Пятница</button>
+  <button class="day-tab" onclick="switchDay('sat',this)">Суббота</button>
 </div>
 <div id="sched-mon" class="sched-grid active"></div>
+<div id="sched-tue" class="sched-grid"></div>
 <div id="sched-wed" class="sched-grid"></div>
+<div id="sched-thu" class="sched-grid"></div>
 <div id="sched-fri" class="sched-grid"></div>
+<div id="sched-sat" class="sched-grid"></div>
   </div>
 </section>
 
