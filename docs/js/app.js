@@ -38,7 +38,7 @@ const TRAININGS = {
   osanka:      { name: 'Здоровая спина + Растяжка', tags: ['Спина', 'Гибкость', '55 мин'], what: 'Комплексная тренировка для здоровья спины и развития гибкости.', includes: 'Укрепление спины и плечевого пояса, растяжка передней поверхности тела.', who: 'Для всех, кто хочет красиво держать спину и стать гибче.' },
 };
 
-const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DAY_KEYS = ['mon', 'wed', 'fri'];
 const DAY_MAP = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
 const DAY_LABEL_TO_KEY = { 'Пн': 'mon', 'Вт': 'tue', 'Ср': 'wed', 'Чт': 'thu', 'Пт': 'fri', 'Сб': 'sat' };
 const GROUP_DAYS = { mwf: ['mon', 'wed', 'fri'], tts: ['tue', 'thu', 'sat'] };
@@ -450,6 +450,7 @@ function getRawPhone(val) { return normalizePhone(val); }
 function renderSchedule() {
   DAY_KEYS.forEach((day) => {
     const el = document.getElementById('sched-' + day);
+    if (!el) return; // контейнера нет в HTML — пропускаем
     const items = SCHEDULE[day] || [];
     el.innerHTML = items.length
       ? items.map((s) => `
@@ -469,7 +470,7 @@ function switchDay(day, btn) {
   document.querySelectorAll('.day-tab').forEach((b) => b.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.sched-grid').forEach((g) => g.classList.remove('active'));
-  document.getElementById('sched-' + day).classList.add('active');
+  document.getElementById('sched-' + day)?.classList.add('active');
 }
 
 /* ── PRICES ──────────────────────────────────────── */
