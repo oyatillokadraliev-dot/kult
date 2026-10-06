@@ -17,7 +17,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 .login-logo{font-family:'Playfair Display',serif;font-size:32px;margin-bottom:4px}
 .login-sub{font-size:14px;color:var(--muted);margin-bottom:32px}
 
-/* ADMIN SHELL */
+/* SHELL */
 #admin-screen{display:none}
 .topbar{background:var(--forest);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .topbar-logo{font-family:'Playfair Display',serif;font-size:18px;color:var(--white)}
@@ -52,7 +52,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 label{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
 input,select,textarea{font-family:'DM Sans',sans-serif;font-size:16px;color:var(--ink);background:var(--bg);border:1.5px solid transparent;padding:10px 14px;border-radius:8px;outline:none;transition:border-color .2s;width:100%}
 input:focus,select:focus,textarea:focus{background:var(--white);border-color:var(--forest)}
+input[readonly]{opacity:.6;cursor:not-allowed}
 textarea{resize:vertical;min-height:90px}
+.hint{font-size:12px;color:var(--muted);margin-top:2px;min-height:14px}
 
 /* BUTTONS */
 .btn{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:10px 22px;border-radius:100px;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -60,7 +62,7 @@ textarea{resize:vertical;min-height:90px}
 .btn-g{background:transparent;color:var(--muted);border:1.5px solid var(--border)}.btn-g:hover{color:var(--ink);border-color:var(--ink)}
 .btn-d{background:rgba(220,38,38,.08);color:var(--red)}.btn-d:hover{background:rgba(220,38,38,.16)}
 .btn-sm{padding:7px 14px;font-size:12px}
-.btn-logout{font-size:13px;color:rgba(255,255,255,.6);background:none;border:1px solid rgba(255,255,255,.2);padding:7px 16px;border-radius:100px;cursor:pointer}
+.btn-logout{font-size:13px;color:rgba(255,255,255,.6);background:none;border:1px solid rgba(255,255,255,.2);padding:7px 16px;border-radius:100px;cursor:pointer;font-family:inherit}
 .btn-logout:hover{color:var(--white);border-color:rgba(255,255,255,.5)}
 
 /* TABLE */
@@ -103,7 +105,6 @@ textarea{resize:vertical;min-height:90px}
 
   .layout{grid-template-columns:1fr;min-height:calc(100vh - 56px)}
 
-  /* Нижнее меню вместо скрытого сайдбара */
   .sidebar{
     position:fixed;left:0;right:0;bottom:0;z-index:90;
     display:flex;justify-content:space-around;align-items:stretch;
@@ -115,15 +116,13 @@ textarea{resize:vertical;min-height:90px}
   .nav-btn{
     flex:1;flex-direction:column;justify-content:center;gap:2px;
     padding:8px 2px;font-size:10px;text-align:center;width:auto;
-    border-right:none;border-top:3px solid transparent;
-    line-height:1.2;
+    border-right:none;border-top:3px solid transparent;line-height:1.2;
   }
   .nav-btn.active{border-right:none;border-top:3px solid var(--forest);background:none}
 
   .content{padding:20px 16px calc(90px + env(safe-area-inset-bottom,0px))}
   .sec-title{font-size:22px}
   .sec-head{margin-bottom:18px}
-  .sec-head .btn{margin-left:auto}
 
   .stats{grid-template-columns:repeat(2,1fr);gap:10px}
   .stat{padding:16px}
@@ -140,11 +139,9 @@ textarea{resize:vertical;min-height:90px}
   .tabs{width:100%}
   .tab{flex:1;padding:8px 6px;font-size:12px}
 
-  .modal{padding:22px 18px}
+  .modal{padding:22px 18px;max-height:92vh;border-radius:var(--r) var(--r) 0 0}
   .modal-title{font-size:20px}
   .ov{padding:12px;align-items:flex-end}
-  .modal{max-height:92vh;border-radius:var(--r) var(--r) 0 0}
-
   .login-box{padding:36px 24px}
 }
 </style>
@@ -239,7 +236,12 @@ textarea{resize:vertical;min-height:90px}
         <div class="card" style="padding:0;overflow:hidden">
           <div class="tbl-wrap">
             <table class="tbl">
-              <thead><tr><th>Имя</th><th>Телефон</th><th>Абонемент</th><th>Telegram</th><th>Изменить аб.</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Имя</th><th>Телефон</th><th>Абонемент</th>
+                  <th>Осталось</th><th>Telegram</th><th></th>
+                </tr>
+              </thead>
               <tbody id="clients-tbody"></tbody>
             </table>
           </div>
@@ -330,7 +332,7 @@ textarea{resize:vertical;min-height:90px}
     <div class="row row-1">
       <div class="fg">
         <label>Фото тренера</label>
-        <label id="photo-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:2px dashed var(--border);border-radius:var(--r);padding:16px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:var(--muted);min-height:140px">
+        <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:2px dashed var(--border);border-radius:var(--r);padding:16px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:var(--muted);min-height:140px">
           <img id="tr-photo-preview" alt="" style="display:none;width:110px;height:110px;border-radius:50%;object-fit:cover">
           <span id="photo-upload-text">Нажмите, чтобы выбрать фото</span>
           <input type="file" accept="image/*" onchange="previewPhoto(this)" style="display:none">
@@ -360,25 +362,36 @@ textarea{resize:vertical;min-height:90px}
 <div class="ov" id="m-client">
   <div class="modal">
     <button class="modal-close" onclick="closeM('m-client')" aria-label="Закрыть">×</button>
-    <div class="modal-title">Добавить клиента</div>
+    <div class="modal-title" id="m-client-title">Добавить клиента</div>
+    <input type="hidden" id="cl-mode" value="add">
+
     <div class="row row-2">
       <div class="fg"><label>Имя и фамилия</label><input id="cl-name" placeholder="Мария Иванова"></div>
       <div class="fg"><label>Телефон</label><input id="cl-phone" type="tel" placeholder="79001234567"></div>
     </div>
-    <div class="row row-1">
-      <div class="fg"><label>Абонемент</label>
-        <select id="cl-ab">
+
+    <div class="row row-2">
+      <div class="fg">
+        <label>Абонемент</label>
+        <select id="cl-ab" onchange="updateSessionsHint()">
           <option value="">— без абонемента —</option>
-          <option value="single">Разовое (700 ₽)</option>
-          <option value="ab8">8 тренировок (4 300 ₽)</option>
-          <option value="ab12">12 тренировок (4 800 ₽)</option>
-          <option value="ab16">16 тренировок (6 000 ₽)</option>
+          <option value="single">Разовое (1 занятие)</option>
+          <option value="ab8">8 тренировок</option>
+          <option value="ab12">12 тренировок</option>
+          <option value="ab16">16 тренировок</option>
         </select>
       </div>
+      <div class="fg">
+        <label>Осталось занятий</label>
+        <input id="cl-sessions" type="number" inputmode="numeric" min="0" placeholder="8">
+        <div id="cl-sessions-hint" class="hint"></div>
+      </div>
     </div>
+
     <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-      <button class="btn btn-p" onclick="saveClient()">Добавить</button>
+      <button class="btn btn-p" onclick="saveClient()">Сохранить</button>
       <button class="btn btn-g" onclick="closeM('m-client')">Отмена</button>
+      <button class="btn btn-d btn-sm" id="del-client" style="margin-left:auto;display:none" onclick="delClient()">Удалить</button>
     </div>
   </div>
 </div>
@@ -426,7 +439,7 @@ async function safe(fn, errMsg = 'Ошибка сохранения') {
   catch (e) { console.error(e); toast(errMsg + ': ' + (e.message || '')); throw e; }
 }
 
-/* ── AUTH (см. примечание в ответе) ──────────────── */
+/* ── AUTH (временный, см. примечание) ─────────────── */
 const PW_KEY = 'kult_admin_pw';
 const DEFAULT_PW = 'kult2024admin';
 
@@ -464,7 +477,7 @@ document.getElementById('pw').addEventListener('keydown', (e) => { if (e.key ===
 /* ── NAVIGATION ──────────────────────────────────── */
 function go(name, btn) {
   document.querySelectorAll('.sec').forEach((s) => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
+  document.querySelectorAll('.sidebar .nav-btn').forEach((b) => b.classList.remove('active'));
   document.getElementById('sec-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   const loaders = {
@@ -712,69 +725,128 @@ async function delTrainer() {
 /* ── CLIENTS ─────────────────────────────────────── */
 let clientsCache = [];
 const AB_L = { single: 'Разовое', ab8: '8 тр.', ab12: '12 тр.', ab16: '16 тр.' };
+const AB_SESSIONS = { single: 1, ab8: 8, ab12: 12, ab16: 16 };
 
 async function loadClients() {
   const snap = await db.collection('users').get();
   clientsCache = snap.docs.map((d) => ({ phone: d.id, ...d.data() }));
   renderClients(clientsCache);
 }
+
 function renderClients(list) {
-  document.getElementById('clients-tbody').innerHTML = list.map((c) => `
-    <tr>
-      <td>${esc(c.name || '—')}</td>
-      <td><code>+${esc(c.phone)}</code></td>
-      <td>${c.abonement
-        ? `<span class="bdg bdg-y">${esc(AB_L[c.abonement] || c.abonement)}</span>`
-        : '<span class="bdg">—</span>'}</td>
-      <td>${c.telegramChatId
-        ? '<span class="bdg bdg-g">✓ Есть</span>'
-        : '<span class="bdg bdg-r">✗ Нет</span>'}</td>
-      <td>
-        <select onchange="changeAb('${esc(c.phone)}',this.value)" style="padding:5px 8px;font-size:13px;width:auto">
-          <option value="">Без аб.</option>
-          <option value="single"${c.abonement === 'single' ? ' selected' : ''}>Разовое</option>
-          <option value="ab8"${c.abonement === 'ab8' ? ' selected' : ''}>8 тр.</option>
-          <option value="ab12"${c.abonement === 'ab12' ? ' selected' : ''}>12 тр.</option>
-          <option value="ab16"${c.abonement === 'ab16' ? ' selected' : ''}>16 тр.</option>
-        </select>
-      </td>
-    </tr>`).join('') ||
-    '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">Клиентов нет</td></tr>';
+  document.getElementById('clients-tbody').innerHTML = list.length
+    ? list.map((c) => {
+        const abLabel = c.abonement ? (AB_L[c.abonement] || c.abonement) : '—';
+        const left = c.sessionsLeft ?? '—';
+        return `<tr>
+          <td>${esc(c.name || '—')}</td>
+          <td><code>+${esc(c.phone)}</code></td>
+          <td>${c.abonement
+            ? `<span class="bdg bdg-y">${esc(abLabel)}</span>`
+            : '<span class="bdg">—</span>'}</td>
+          <td><b>${esc(String(left))}</b></td>
+          <td>${c.telegramChatId
+            ? '<span class="bdg bdg-g">✓ Есть</span>'
+            : '<span class="bdg bdg-r">✗ Нет</span>'}</td>
+          <td>
+            <button class="btn btn-g btn-sm" onclick="openEditClient('${esc(c.phone)}')">Изменить</button>
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Клиентов нет</td></tr>';
 }
+
 function filterClients() {
   const q = document.getElementById('cl-search').value.toLowerCase();
   const digits = q.replace(/\D/g, '');
   renderClients(clientsCache.filter((c) =>
-    (c.name || '').toLowerCase().includes(q) || (digits && String(c.phone).includes(digits))
+    (c.name || '').toLowerCase().includes(q) ||
+    (digits && String(c.phone).includes(digits))
   ));
 }
-async function changeAb(phone, ab) {
-  await safe(() => db.collection('users').doc(phone).set({ abonement: ab || null }, { merge: true }));
-  toast('✅ Абонемент обновлён');
-}
+
 function openClient() {
+  document.getElementById('cl-mode').value = 'add';
+  document.getElementById('m-client-title').textContent = 'Добавить клиента';
   document.getElementById('cl-name').value = '';
-  document.getElementById('cl-phone').value = '';
+  const phone = document.getElementById('cl-phone');
+  phone.value = '';
+  phone.readOnly = false;
   document.getElementById('cl-ab').value = '';
+  document.getElementById('cl-sessions').value = '';
+  document.getElementById('del-client').style.display = 'none';
+  updateSessionsHint();
   openM('m-client');
 }
+
+function openEditClient(phone) {
+  const c = clientsCache.find((x) => x.phone === phone);
+  if (!c) return;
+  document.getElementById('cl-mode').value = 'edit';
+  document.getElementById('m-client-title').textContent = 'Изменить клиента';
+  document.getElementById('cl-name').value = c.name || '';
+  const phoneEl = document.getElementById('cl-phone');
+  phoneEl.value = c.phone;
+  phoneEl.readOnly = true;   // телефон — ID документа, не меняем
+  document.getElementById('cl-ab').value = c.abonement || '';
+  document.getElementById('cl-sessions').value = c.sessionsLeft ?? '';
+  document.getElementById('del-client').style.display = 'inline-flex';
+  updateSessionsHint();
+  openM('m-client');
+}
+
+function updateSessionsHint() {
+  const ab = document.getElementById('cl-ab').value;
+  const hint = document.getElementById('cl-sessions-hint');
+  const input = document.getElementById('cl-sessions');
+  const mode = document.getElementById('cl-mode').value;
+  if (ab && AB_SESSIONS[ab]) {
+    hint.textContent = `По умолчанию: ${AB_SESSIONS[ab]} занятий`;
+    if (mode === 'add' && input.value === '') input.value = AB_SESSIONS[ab];
+  } else {
+    hint.textContent = '';
+    if (mode === 'add') input.value = '';
+  }
+}
+
 async function saveClient() {
+  const mode = document.getElementById('cl-mode').value;
   const name = document.getElementById('cl-name').value.trim();
   const phone = normalizePhone(document.getElementById('cl-phone').value);
   const ab = document.getElementById('cl-ab').value;
-  if (!name) return toast('Введите имя');
-  if (phone.length !== 11) return toast('Телефон должен содержать 11 цифр');
+  const sesRaw = document.getElementById('cl-sessions').value;
+  const sessionsLeft = sesRaw === '' ? null : Math.max(0, parseInt(sesRaw, 10) || 0);
 
-  const ex = await db.collection('users').doc(phone).get();
-  if (ex.exists) return toast('Клиент с таким номером уже есть');
+  if (!name) return toast('Введите имя клиента');
+  if (phone.length !== 11) return toast('Введите корректный номер телефона');
+
+  if (mode === 'add') {
+    const ex = await db.collection('users').doc(phone).get();
+    if (ex.exists) return toast('Клиент с таким номером уже есть');
+  }
 
   await safe(() => db.collection('users').doc(phone).set({
-    name, phone, abonement: ab || null,
-    createdAt: new Date().toISOString(), addedByAdmin: true,
-  }));
+    name,
+    phone,
+    abonement: ab || null,
+    sessionsLeft,
+    addedByAdmin: true,
+    activated: true,
+    createdAt: mode === 'add' ? new Date().toISOString() : undefined,
+  }, { merge: true }));
+
   closeM('m-client');
   await loadClients();
-  toast('✅ Клиент добавлен');
+  toast(mode === 'add' ? '✅ Клиент добавлен' : '✅ Данные обновлены');
+}
+
+async function delClient() {
+  const phone = normalizePhone(document.getElementById('cl-phone').value);
+  if (!phone || !confirm(`Удалить клиента +${phone}? Действие нельзя отменить.`)) return;
+  await safe(() => db.collection('users').doc(phone).delete(), 'Не удалось удалить');
+  closeM('m-client');
+  await loadClients();
+  toast('Клиент удалён');
 }
 
 /* ── PRICES ──────────────────────────────────────── */
