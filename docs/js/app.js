@@ -235,14 +235,22 @@ async function dbUpdateBookingStatus(id, status) {
   await fb().updateDoc(fb().doc(d, 'bookings', id), { status });
 }
 
-async function dbGetTrainerBookings(trainerKey) {
+async function dbGetTrainerBookings(trainerKey, trainerName) {
   const d = await getDB();
-  const q = fb().query(
-    fb().collection(d, 'bookings'),
-    fb().where('trainerKey', '==', trainerKey)
-  );
-  const snap = await fb().getDocs(q);
-  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const col = fb().collection(d, 'bookings');
+
+  // Новые записи — по trainerKey
+  const byKey = await fb().getDocs(fb().query(col, fb().where('trainerKey', '==', trainerKey)));
+
+  // Старые записи — по имени тренера (без trainerKey)
+  const byName = await fb().getDocs(fb().query(col, fb().where('trainer', '==', trainerName)));
+
+  const map = new Map();
+  byKey.docs.forEach((doc) => map.set(doc.id, { id: doc.id, ...doc.data() }));
+  byName.docs.forEach((doc) => {
+    if (!map.has(doc.id)) map.set(doc.id, { id: doc.id, ...doc.data() });
+  });
+  return [...map.values()];
 }
 
 async function dbGetReviews(trainerKey) {
@@ -1003,8 +1011,8 @@ async function renderTC() {
   list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
 
   // Все записи этого тренера одним запросом
-  const all = await dbGetTrainerBookings(user.trainerKey);
-  all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
+   const all = await dbGetTrainerBookings(user.trainerKey, trainer.name);
+   all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
   // Группируем по времени и названию
   const groups = {};
