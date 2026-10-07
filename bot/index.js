@@ -48,6 +48,16 @@ function fmtDate(iso){
   const dn=['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
   return `${d.getDate()} ${mo[d.getMonth()]} (${dn[d.getDay()]}) в ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
+function pluralPeople(n){
+  const mod10=n%10,mod100=n%100;
+  if(mod10===1&&mod100!==11)return 'человек';
+  if([2,3,4].includes(mod10)&&![12,13,14].includes(mod100))return 'человека';
+  return 'человек';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   КЛИЕНТ — меню и тексты
+   ═══════════════════════════════════════════════════════════ */
 
 const mainMenu={inline_keyboard:[
   [{text:'📅 Мои тренировки',callback_data:'my_bookings'}],
@@ -68,6 +78,76 @@ async function showMenu(chatId,user,msgId=null){
   else await send(chatId,text,{reply_markup:mainMenu});
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ТРЕНЕР — меню и тексты
+   ═══════════════════════════════════════════════════════════ */
+
+const trainerMenu={inline_keyboard:[
+  [{text:'📅 Мои тренировки',callback_data:'t_schedule'}],
+  [{text:'🚪 Выйти из аккаунта',callback_data:'logout'}],
+]};
+const backTrainerBtn={inline_keyboard:[[{text:'← Главное меню',callback_data:'t_menu'}]]};
+
+async function showTrainerMenu(chatId,trainer,msgId=null){
+  const name=(trainer.name||'').split(' ')[0]||'тренер';
+  const text=`🏋️‍♀️ <b>Кабинет тренера</b>\n\nПривет, <b>${name}</b>! 🤍\n\n📱 Телефон: <code>+${trainer.phone}</code>\n🎯 Специализация: ${trainer.spec||'—'}\n\nЧто хочешь посмотреть?`;
+  if(msgId)await edit(chatId,msgId,text,{reply_markup:trainerMenu});
+  else await send(chatId,text,{reply_markup:trainerMenu});
+}
+
+async function showTrainerSchedule(chatId,trainer,msgId){
+  const schedule=trainer.schedule||[];
+  if(!schedule.length){
+    return await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nРасписание пока не добавлено администратором.',{reply_markup:backTrainerBtn});
+  }
+  const buttons=schedule.map((s,i)=>[{text:`${s.time} · ${s.name}`,callback_data:`t_slot:${i}`}]);
+  buttons.push([{text:'← Главное меню',callback_data:'t_menu'}]);
+  await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nВыбери занятие, чтобы увидеть, кто записан:',{reply_markup:{inline_keyboard:buttons}});
+}
+
+async function getSlotClients(trainer,s){
+  const snap=await db.collection('bookings')
+    .where('trainer','==',trainer.name)
+    .where('name','==',s.name)
+    .where('status','==','upcoming')
+    .get();
+  return snap.docs
+    .map(d=>({id:d.id,...d.data()}))
+    .filter(c=>c.time===s.time)
+    .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
+}
+
+async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
+  const schedule=trainer.schedule||[];
+  const s=schedule[slotIndex];
+  if(!s)return await edit(chatId,msgId,'Занятие не найдено.',{reply_markup:backTrainerBtn});
+
+  const clients=await getSlotClients(trainer,s);
+
+  let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · ${s.days||''}\n\n`;
+  const rows=[];
+
+  if(!clients.length){
+    text+='👥 Записалось: <b>0 человек</b>\n\nПока никто не записан на это занятие.';
+  }else{
+    text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
+    clients.forEach((c,i)=>{
+      text+=`\n${i+1}. <b>${c.userName||'—'}</b> · +${c.phone||''}${c.trainingDate?' · '+fmtDate(c.trainingDate):''}`;
+      rows.push([
+        {text:`✅ ${(c.userName||'—').split(' ')[0]} пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
+        {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
+      ]);
+    });
+  }
+
+  rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
+  await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:rows}});
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ОПРЕДЕЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (клиент или тренер) ПО chatId
+   ═══════════════════════════════════════════════════════════ */
+
 async function getUser(chatId){
   const uSnap=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
   if(!uSnap.empty)return {phone:uSnap.docs[0].id,...uSnap.docs[0].data(),role:'client'};
@@ -75,6 +155,10 @@ async function getUser(chatId){
   if(!tSnap.empty)return {phone:tSnap.docs[0].id,...tSnap.docs[0].data(),role:'trainer'};
   return null;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   СООБЩЕНИЯ
+   ═══════════════════════════════════════════════════════════ */
 
 async function handleMsg(message){
   const chatId=String(message.chat.id);
@@ -84,7 +168,7 @@ async function handleMsg(message){
   if(text==='/start'||text.startsWith('/start ')){
     const arg=text.split(' ')[1];
     const user=await getUser(chatId);
-    if(user)return await showMenu(chatId,user);
+    if(user)return user.role==='trainer'?await showTrainerMenu(chatId,user):await showMenu(chatId,user);
     if(arg)return await tryLogin(chatId,arg);
     userStates[chatId]='waiting_phone';
     return await send(chatId,'👋 Привет! Я бот студии <b>КУЛЬТ</b> 🤍\n\nНапиши свой номер телефона (тот, что указывала при регистрации):\n\n<code>+7XXXXXXXXXX</code>');
@@ -92,7 +176,7 @@ async function handleMsg(message){
   if(text==='/menu'){
     const user=await getUser(chatId);
     if(!user){userStates[chatId]='waiting_phone';return await send(chatId,'Сначала войди! Напиши номер телефона 📱');}
-    return await showMenu(chatId,user);
+    return user.role==='trainer'?await showTrainerMenu(chatId,user):await showMenu(chatId,user);
   }
   if(text==='/logout')return await handleLogout(chatId);
 
@@ -103,7 +187,7 @@ async function handleMsg(message){
   }
 
   const user=await getUser(chatId);
-  if(user)return await showMenu(chatId,user);
+  if(user)return user.role==='trainer'?await showTrainerMenu(chatId,user):await showMenu(chatId,user);
   userStates[chatId]='waiting_phone';
   await send(chatId,'Напиши номер телефона чтобы войти 📱');
 }
@@ -112,7 +196,7 @@ async function tryLogin(chatId,phoneRaw){
   const phone=normPhone(phoneRaw);
   if(phone.length!==11)return await send(chatId,'Номер выглядит некорректно 🤨\n\nФормат: <code>+7XXXXXXXXXX</code>');
 
-  // Сначала ищем среди клиентов
+  // 1. Проверяем клиентов
   const userRef=db.collection('users').doc(phone);
   const userSnap=await userRef.get();
 
@@ -124,10 +208,10 @@ async function tryLogin(chatId,phoneRaw){
     const data=userSnap.data();
     const name=(data.name||'').split(' ')[0]||'красотка';
     await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nТеперь буду напоминать о тренировках за 10 часов 😄`);
-    return await showMenu(chatId,{phone,...data});
+    return await showMenu(chatId,{phone,...data,role:'client'});
   }
 
-  // Не клиент — ищем среди тренеров (ID документа = телефон)
+  // 2. Проверяем тренеров
   const trainerRef=db.collection('trainers').doc(phone);
   const trainerSnap=await trainerRef.get();
 
@@ -136,20 +220,32 @@ async function tryLogin(chatId,phoneRaw){
     delete userStates[chatId];
     const data=trainerSnap.data();
     const name=(data.name||'').split(' ')[0]||'тренер';
-    await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nЯ пришлю список твоих клиентов на тренировках.`);
-    return await showTrainerMenu(chatId,{phone,...data});
+    await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nЯ пришлю список твоих тренировок и клиентов, и буду присылать утреннюю сводку в дни занятий.`);
+    return await showTrainerMenu(chatId,{phone,...data,role:'trainer'});
   }
 
   return await send(chatId,'Не нашла такой номер 🔍\n\nТы точно регистрировалась на нашем сайте? Если нет — скорее туда! 🏋️‍♀️');
 }
 
 async function handleLogout(chatId){
-  const snap=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
-  if(snap.empty)return await send(chatId,'Ты и так не вошла 🤷‍♀️\n\nНапиши /start чтобы войти!');
-  await snap.docs[0].ref.set({telegramChatId:null},{merge:true});
-  delete userStates[chatId];
-  await send(chatId,'Вышла из аккаунта 👋\n\nВозвращайся скорее 🤍\n\nВойти снова: /start');
+  const uSnap=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
+  if(!uSnap.empty){
+    await uSnap.docs[0].ref.set({telegramChatId:null},{merge:true});
+    delete userStates[chatId];
+    return await send(chatId,'Вышла из аккаунта 👋\n\nВозвращайся скорее 🤍\n\nВойти снова: /start');
+  }
+  const tSnap=await db.collection('trainers').where('telegramChatId','==',chatId).limit(1).get();
+  if(!tSnap.empty){
+    await tSnap.docs[0].ref.set({telegramChatId:null},{merge:true});
+    delete userStates[chatId];
+    return await send(chatId,'Вышла из аккаунта 👋\n\nВозвращайся скорее 🤍\n\nВойти снова: /start');
+  }
+  return await send(chatId,'Ты и так не вошла 🤷‍♀️\n\nНапиши /start чтобы войти!');
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CALLBACK-КНОПКИ
+   ═══════════════════════════════════════════════════════════ */
 
 async function handleCb(cb){
   const chatId=String(cb.message.chat.id);
@@ -157,8 +253,33 @@ async function handleCb(cb){
   const data=cb.data;
   await answer(cb.id,'');
   const user=await getUser(chatId);
-  if(!user&&data!=='main_menu')return await edit(chatId,msgId,'Кажется вышла из аккаунта 🤔\n\nНапиши /start');
+  if(!user&&data!=='main_menu'&&data!=='t_menu')return await edit(chatId,msgId,'Кажется вышла из аккаунта 🤔\n\nНапиши /start');
 
+  /* ── Ветка ТРЕНЕРА ───────────────────────────── */
+  if(user&&user.role==='trainer'){
+    if(data==='t_menu')return await showTrainerMenu(chatId,user,msgId);
+    if(data==='t_schedule')return await showTrainerSchedule(chatId,user,msgId);
+    if(data.startsWith('t_slot:')){
+      const idx=parseInt(data.split(':')[1],10);
+      return await showTrainerSlotClients(chatId,user,idx,msgId);
+    }
+    if(data.startsWith('t_mark:')){
+      const[,bookingId,status,slotIndex]=data.split(':');
+      await db.collection('bookings').doc(bookingId).set({status},{merge:true});
+      await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
+      return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
+    }
+    if(data==='logout'){
+      return await edit(chatId,msgId,'Ты точно хочешь выйти? 😢\n\nЯ буду скучать...',{reply_markup:{inline_keyboard:[[{text:'✅ Да, выйти',callback_data:'confirm_logout_trainer'},{text:'❌ Отмена',callback_data:'t_menu'}]]}});
+    }
+    if(data==='confirm_logout_trainer'){
+      await db.collection('trainers').doc(user.phone).set({telegramChatId:null},{merge:true});
+      return await edit(chatId,msgId,'Пока-пока! 👋\n\nВозвращайся — твои клиентки ждут 😄');
+    }
+    return; // остальные callback_data тренеру не нужны
+  }
+
+  /* ── Ветка КЛИЕНТА ───────────────────────────── */
   if(data==='main_menu')return await showMenu(chatId,user,msgId);
 
   if(data==='my_bookings'){
@@ -172,16 +293,67 @@ async function handleCb(cb){
       });
       if(bks.length>5)text+=`<i>...и ещё ${bks.length-5}</i>\n\n`;
       text+='Так держать! 🔥';
-      return await edit(chatId,msgId,text,{reply_markup:backBtn});
+
+      // Кнопки отмены для каждой из первых 5 записей
+      const cancelRows=bks.slice(0,5).map((b,i)=>[{
+        text:`❌ Отменить: ${b.name} (${b.time||''})`,
+        callback_data:`cancel:${b.id}`,
+      }]);
+      cancelRows.push([{text:'← Главное меню',callback_data:'main_menu'}]);
+
+      return await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:cancelRows}});
     }catch(e){return await edit(chatId,msgId,'😅 Не смогла загрузить, попробуй позже',{reply_markup:backBtn});}
+  }
+
+  if(data.startsWith('cancel:')){
+    const bookingId=data.split(':')[1];
+    const ref=db.collection('bookings').doc(bookingId);
+    const snap=await ref.get();
+    if(!snap.exists){
+      await answer(cb.id,'Запись уже не найдена',true);
+      return await handleCbReplay(cb,'my_bookings');
+    }
+    const booking=snap.data();
+    if(booking.phone!==user.phone){
+      await answer(cb.id,'Это не твоя запись',true);
+      return;
+    }
+
+    try{
+      await db.runTransaction(async(tx)=>{
+        const userRef=db.collection('users').doc(user.phone);
+        const uSnap=await tx.get(userRef);
+        tx.delete(ref);
+        const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
+        if(currentLeft!==null&&currentLeft!==undefined){
+          tx.update(userRef,{sessionsLeft:currentLeft+1});
+        }
+      });
+      await answer(cb.id,'Запись отменена, занятие возвращено ✅');
+    }catch(e){
+      console.error('Ошибка отмены записи:',e.message);
+      await answer(cb.id,'Не удалось отменить запись',true);
+      return;
+    }
+
+    return await handleCbReplay(cb,'my_bookings');
   }
 
   if(data==='my_abonement'){
     const ab=user.abonement;
     if(!ab){return await edit(chatId,msgId,'💳 <b>Мой абонемент</b>\n\nУ тебя пока нет абонемента 😮\n\nЗайди на сайт и выбери!\n\n🎟 Разовое — 700 ₽\n📦 8 тр. — 4 300 ₽\n📦 12 тр. — 4 800 ₽\n📦 16 тр. — 6 000 ₽',{reply_markup:backBtn});}
     const total=AB_T[ab]||0;
-    const snap=await db.collection('bookings').where('phone','==',user.phone).where('status','in',['attended','missed']).get();
-    const used=snap.size,left=Math.max(0,total-used);
+
+    // Приоритет: sessionsLeft (из админки/сайта), иначе считаем по attended/missed
+    let used,left;
+    if(user.sessionsLeft!==null&&user.sessionsLeft!==undefined){
+      left=user.sessionsLeft;
+      used=Math.max(0,total-left);
+    }else{
+      const snap=await db.collection('bookings').where('phone','==',user.phone).where('status','in',['attended','missed']).get();
+      used=snap.size;left=Math.max(0,total-used);
+    }
+
     const bar='█'.repeat(Math.round((used/total)*10))+'░'.repeat(10-Math.round((used/total)*10));
     let mood='';
     if(left===0)mood='\n\n🆘 Абонемент закончился! Пора продлевать 😄';
@@ -212,13 +384,33 @@ async function handleCb(cb){
       await ref.set({confirmed:true},{merge:true});
       await edit(chatId,msgId,cb.message.text+'\n\n✅ <b>Подтверждено! Молодец 💪</b>');
     }else{
-      await ref.set({status:'cancelled_by_client',confirmed:false},{merge:true});
+      // Отмена из напоминания — тоже возвращаем занятие
+      try{
+        await db.runTransaction(async(tx)=>{
+          const userRef=db.collection('users').doc(snap.data().phone);
+          const uSnap=await tx.get(userRef);
+          tx.update(ref,{status:'cancelled_by_client',confirmed:false});
+          const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
+          if(currentLeft!==null&&currentLeft!==undefined){
+            tx.update(userRef,{sessionsLeft:currentLeft+1});
+          }
+        });
+      }catch(e){console.error('Ошибка отмены из напоминания:',e.message);}
       await edit(chatId,msgId,cb.message.text+'\n\n❌ <b>Отменила. Бывает 🤷‍♀️</b>');
     }
   }
 }
 
-// WEBHOOK
+/* Перерисовывает экран заново (используется после отмены записи) */
+async function handleCbReplay(cb,targetData){
+  const fakeCb={...cb,data:targetData};
+  return await handleCb(fakeCb);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   WEBHOOK
+   ═══════════════════════════════════════════════════════════ */
+
 app.post('/webhook',async(req,res)=>{
   res.status(200).send('OK');
   const u=req.body;
@@ -229,7 +421,9 @@ app.post('/webhook',async(req,res)=>{
 });
 app.get('/',(req,res)=>res.send('КУЛЬТ bot 🤍'));
 
-// CRON 1 — напоминания о тренировках (каждый час)
+/* ═══════════════════════════════════════════════════════════
+   CRON 1 — напоминания клиентам о тренировках (каждый час)
+   ═══════════════════════════════════════════════════════════ */
 const REMINDERS=[
   '🔔 Эй, подруга! Ты не забыла? Завтра тренировка и она сама себя не проведёт 😄',
   '⏰ Стоп! У тебя скоро тренировка. Тренер уже греется 😁',
@@ -238,7 +432,7 @@ const REMINDERS=[
   '🌟 Привет-привет! Напоминаю про тренировку — она ждёт тебя! 🤍',
 ];
 cron.schedule('0 * * * *',async()=>{
-  console.log('[cron] Проверяем напоминания...');
+  console.log('[cron] Проверяем напоминания клиентам...');
   try{
     const now=new Date();
     const ws=new Date(now.getTime()+9.5*3600000);
@@ -262,7 +456,55 @@ cron.schedule('0 * * * *',async()=>{
   }catch(e){console.error('[cron] Ошибка напоминаний:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
-// CRON 2 — абонемент заканчивается (ежедневно в 10:00)
+/* ═══════════════════════════════════════════════════════════
+   CRON 1b — утренняя сводка ТРЕНЕРУ о сегодняшних группах (ежедневно в 8:00)
+   ═══════════════════════════════════════════════════════════ */
+cron.schedule('0 8 * * *',async()=>{
+  console.log('[cron] Утренняя сводка тренерам...');
+  try{
+    const now=new Date();
+    const dayStart=new Date(now);dayStart.setHours(0,0,0,0);
+    const dayEnd=new Date(now);dayEnd.setHours(23,59,59,999);
+
+    const trainersSnap=await db.collection('trainers').get();
+
+    for(const tDoc of trainersSnap.docs){
+      const trainer={phone:tDoc.id,...tDoc.data()};
+      if(!trainer.telegramChatId)continue;
+
+      const schedule=trainer.schedule||[];
+      if(!schedule.length)continue;
+
+      // Дни недели на русском, как в полях s.days ("Пн, Ср, Пт")
+      const dayAbbr=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][now.getDay()];
+
+      // Слоты тренера, которые идут сегодня
+      const todaySlots=schedule.filter(s=>
+        typeof s.days==='string'&&s.days.split(',').map(x=>x.trim()).includes(dayAbbr)
+      );
+
+      if(!todaySlots.length)continue;
+
+      let text=`☀️ <b>Доброе утро, ${(trainer.name||'').split(' ')[0]||'тренер'}!</b>\n\nВот твои тренировки на сегодня:\n\n`;
+
+      for(const s of todaySlots){
+        const clients=await getSlotClients(trainer,s);
+        text+=`🏋️‍♀️ <b>${s.time} · ${s.name}</b>\n`;
+        text+=clients.length
+          ?`   👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n`
+          :`   👥 Записалось: <b>0 человек</b>\n`;
+      }
+
+      text+='\nХорошего дня и продуктивных тренировок! 💪';
+
+      await send(trainer.telegramChatId,text,{reply_markup:trainerMenu});
+    }
+  }catch(e){console.error('[cron] Ошибка утренней сводки тренерам:',e.message);}
+},{timezone:'Europe/Astrakhan'});
+
+/* ═══════════════════════════════════════════════════════════
+   CRON 2 — абонемент заканчивается (ежедневно в 10:00)
+   ═══════════════════════════════════════════════════════════ */
 cron.schedule('0 10 * * *',async()=>{
   console.log('[cron] Проверяем абонементы...');
   try{
@@ -273,8 +515,15 @@ cron.schedule('0 10 * * *',async()=>{
       if(!u.telegramChatId||!u.abonement)continue;
       const total=AB_T[u.abonement];
       if(!total)continue;
-      const bSnap=await db.collection('bookings').where('phone','==',uDoc.id).where('status','in',['attended','missed']).get();
-      const left=total-bSnap.size;
+
+      let left;
+      if(u.sessionsLeft!==null&&u.sessionsLeft!==undefined){
+        left=u.sessionsLeft;
+      }else{
+        const bSnap=await db.collection('bookings').where('phone','==',uDoc.id).where('status','in',['attended','missed']).get();
+        left=total-bSnap.size;
+      }
+
       if(left===2&&!u.expiryWarningsSent){
         await send(u.telegramChatId,MSGS[Math.floor(Math.random()*MSGS.length)].replace('{left}',left),{reply_markup:{inline_keyboard:[[{text:'💳 Мой абонемент',callback_data:'my_abonement'}]]}});
         await uDoc.ref.set({expiryWarningsSent:true},{merge:true});
@@ -284,7 +533,9 @@ cron.schedule('0 10 * * *',async()=>{
   }catch(e){console.error('[cron] Ошибка абонементов:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
-// CRON 3 — давно не покупал абонемент (раз в неделю по понедельникам)
+/* ═══════════════════════════════════════════════════════════
+   CRON 3 — давно не покупал абонемент (раз в неделю по понедельникам)
+   ═══════════════════════════════════════════════════════════ */
 cron.schedule('0 11 * * 1',async()=>{
   console.log('[cron] Проверяем неактивных клиентов...');
   try{
@@ -292,29 +543,24 @@ cron.schedule('0 11 * * 1',async()=>{
     const now=new Date();
     for(const uDoc of snap.docs){
       const u=uDoc.data();
-      if(!u.telegramChatId||u.abonement)continue; // у кого есть аб — пропускаем
-      // Проверяем последнюю запись
+      if(!u.telegramChatId||u.abonement)continue;
       const bSnap=await db.collection('bookings').where('phone','==',uDoc.id).get();
-      if(bSnap.empty){
-        // Никогда не записывался — пропускаем
-        continue;
-      }
-      // Берём дату последней записи
+      if(bSnap.empty)continue;
       const lastBook=bSnap.docs
         .map(d=>new Date(d.data().createdAt||0))
         .sort((a,b)=>b-a)[0];
       const daysSince=Math.floor((now-lastBook)/(1000*60*60*24));
-      // Если прошло больше 30 дней без абонемента — напоминаем
       if(daysSince>=30&&!u.noAbWarningThisWeek){
         await send(u.telegramChatId,`👋 Привет! Давно тебя не видели в студии...\n\nПрошло уже <b>${daysSince} дней</b> с последней тренировки 😢\n\nМы скучаем! Возвращайся — первая тренировка ждёт тебя 💪\n\nКупи абонемент на сайте и запишись!`);
         await uDoc.ref.set({noAbWarningThisWeek:true},{merge:true});
       }
     }
-    // Сбрасываем флаг раз в неделю (в воскресенье)
   }catch(e){console.error('[cron] Ошибка неактивных:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
-// CRON 4 — много пропусков (еженедельно по пятницам)
+/* ═══════════════════════════════════════════════════════════
+   CRON 4 — много пропусков (еженедельно по пятницам)
+   ═══════════════════════════════════════════════════════════ */
 cron.schedule('0 17 * * 5',async()=>{
   console.log('[cron] Проверяем пропуски...');
   try{
@@ -322,7 +568,6 @@ cron.schedule('0 17 * * 5',async()=>{
     for(const uDoc of snap.docs){
       const u=uDoc.data();
       if(!u.telegramChatId)continue;
-      // Считаем missed за последние 30 дней
       const since=new Date(Date.now()-30*24*3600000).toISOString();
       const bSnap=await db.collection('bookings')
         .where('phone','==',uDoc.id)
@@ -337,7 +582,9 @@ cron.schedule('0 17 * * 5',async()=>{
   }catch(e){console.error('[cron] Ошибка пропусков:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
-// CRON 5 — сброс еженедельных флагов (каждое воскресенье в полночь)
+/* ═══════════════════════════════════════════════════════════
+   CRON 5 — сброс еженедельных флагов (каждое воскресенье в полночь)
+   ═══════════════════════════════════════════════════════════ */
 cron.schedule('0 0 * * 0',async()=>{
   try{
     const snap=await db.collection('users').get();
@@ -351,7 +598,9 @@ cron.schedule('0 0 * * 0',async()=>{
   }catch(e){console.error('[cron] Ошибка сброса:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
-// SELF-PING
+/* ═══════════════════════════════════════════════════════════
+   SELF-PING
+   ═══════════════════════════════════════════════════════════ */
 if(SERVER_URL){
   cron.schedule('*/10 * * * *',async()=>{
     try{await fetch(SERVER_URL);console.log('[ping] OK');}
@@ -359,7 +608,9 @@ if(SERVER_URL){
   });
 }
 
-// ЗАПУСК
+/* ═══════════════════════════════════════════════════════════
+   ЗАПУСК
+   ═══════════════════════════════════════════════════════════ */
 app.listen(PORT,async()=>{
   console.log(`✅ Сервер на порту ${PORT}`);
   await fetch(tg('setMyCommands'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({commands:[{command:'start',description:'🚀 Войти / Главное меню'},{command:'menu',description:'📋 Личный кабинет'},{command:'logout',description:'🚪 Выйти из аккаунта'}]})});
