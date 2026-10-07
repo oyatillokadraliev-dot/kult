@@ -632,81 +632,74 @@ function openBookingModal(name, trainer, time, days) {
 async function confirmBook() {
   if (!pendingBook) return;
   if (!user) { toast('Войдите, чтобы записаться'); return; }
- 
-  // Проверяем абонемент
+
   if (!user.abonement) {
     toast('Сначала выберите абонемент в личном кабинете');
     return;
   }
 
-   const trainerKey = Object.keys(TRAINERS_FROM_DB).find(
-  (k) => TRAINERS_FROM_DB[k].name === pendingBook.trainer
-) || null;
-
-const bookingData = {
-  ...pendingBook,
-  trainerKey,
-  phone: user.phone,
-  userName: user.name,
-  status: 'upcoming',
-  trainingDate: nextDate,
-};
-   
-  // Проверяем остаток занятий
   const left = user.sessionsLeft;
   if (left !== null && left !== undefined && left <= 0) {
     toast('Занятия по абонементу закончились. Обратитесь к администратору.');
     return;
   }
- 
+
+  // nextDate вычисляем один раз здесь — она нужна и для bookingData, и для toast ниже
+  const nextDate = nextDateForDays(pendingBook.days, pendingBook.time);
+
+  const trainerKey = Object.keys(TRAINERS_FROM_DB).find(
+    (k) => TRAINERS_FROM_DB[k].name === pendingBook.trainer
+  ) || null;
+
+  const bookingData = {
+    ...pendingBook,
+    trainerKey,
+    phone: user.phone,
+    userName: user.name,
+    status: 'upcoming',
+    trainingDate: nextDate,
+  };
+
   setBtn('btn-confirm-book', 'Записываем...', true);
   try {
-    const nextDate = nextDateForDays(pendingBook.days, pendingBook.time);
-    const bookingData = {
-      ...pendingBook,
-      phone:        user.phone,
-      userName:     user.name,
-      status:       'upcoming',
-      trainingDate: nextDate,
-    };
- 
-    // Транзакция: добавляем запись + уменьшаем sessionsLeft на 1
     const db = await getDB();
     const userRef = db.collection('users').doc(user.phone);
     const bookRef = db.collection('bookings').doc();
- 
+
     await db.runTransaction(async (tx) => {
       const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) throw new Error('Пользователь не найден');
- 
+      if (!userSnap.exists) throw new Error('no_user');
+
       const currentLeft = userSnap.data().sessionsLeft;
       if (currentLeft !== null && currentLeft !== undefined && currentLeft <= 0) {
         throw new Error('no_sessions');
       }
- 
+
       tx.set(bookRef, { ...bookingData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
- 
-      // Уменьшаем счётчик только если он задан
+
       if (currentLeft !== null && currentLeft !== undefined) {
         tx.update(userRef, { sessionsLeft: currentLeft - 1 });
       }
     });
- 
+
     const newLeft = (left !== null && left !== undefined) ? left - 1 : null;
     user.sessionsLeft = newLeft;
     save();
- 
+
     bookings.push({ ...bookingData, id: bookRef.id });
     closeOv('ov-booking');
     toast(newLeft !== null
       ? `Вы записаны! Осталось занятий: ${newLeft}`
       : 'Вы записаны! Напоминание придёт в Telegram');
   } catch (e) {
-    if (e.message === 'no_sessions') {
-      toast('Занятия по абонементу закончились. Обратитесь к администратору.');
-    } else {
+    const msg = {
+      no_user: 'Пользователь не найден',
+      no_sessions: 'Занятия по абонементу закончились. Обратитесь к администратору.',
+    }[e.message];
+    if (msg) toast(msg);
+    else {
       console.error(e);
-      toast('Не удалось записаться. Попробуйте ещё раз.');
+      toast('Не удалось записаться: ' + (e.message || ''));
     }
   } finally {
     setBtn('btn-confirm-book', 'Подтвердить запись', false);
