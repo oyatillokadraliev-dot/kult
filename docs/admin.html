@@ -815,7 +815,14 @@ async function saveClient() {
   const phone = normalizePhone(document.getElementById('cl-phone').value);
   const ab = document.getElementById('cl-ab').value;
   const sesRaw = document.getElementById('cl-sessions').value;
-  const sessionsLeft = sesRaw === '' ? null : Math.max(0, parseInt(sesRaw, 10) || 0);
+
+  // Если поле осталось пустым, а абонемент выбран — подставляем дефолт
+  let sessionsLeft;
+  if (sesRaw === '') {
+    sessionsLeft = ab ? (AB_SESSIONS[ab] ?? null) : null;
+  } else {
+    sessionsLeft = Math.max(0, parseInt(sesRaw, 10) || 0);
+  }
 
   if (!name) return toast('Введите имя клиента');
   if (phone.length !== 11) return toast('Введите корректный номер телефона');
