@@ -69,8 +69,11 @@ async function showMenu(chatId,user,msgId=null){
 }
 
 async function getUser(chatId){
-  const snap=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
-  return snap.empty?null:{phone:snap.docs[0].id,...snap.docs[0].data()};
+  const uSnap=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
+  if(!uSnap.empty)return {phone:uSnap.docs[0].id,...uSnap.docs[0].data(),role:'client'};
+  const tSnap=await db.collection('trainers').where('telegramChatId','==',chatId).limit(1).get();
+  if(!tSnap.empty)return {phone:tSnap.docs[0].id,...tSnap.docs[0].data(),role:'trainer'};
+  return null;
 }
 
 async function handleMsg(message){
@@ -108,17 +111,36 @@ async function handleMsg(message){
 async function tryLogin(chatId,phoneRaw){
   const phone=normPhone(phoneRaw);
   if(phone.length!==11)return await send(chatId,'Номер выглядит некорректно 🤨\n\nФормат: <code>+7XXXXXXXXXX</code>');
-  const ref=db.collection('users').doc(phone);
-  const snap=await ref.get();
-  if(!snap.exists)return await send(chatId,'Не нашла такой номер 🔍\n\nТы точно регистрировалась на нашем сайте? Если нет — скорее туда! 🏋️‍♀️');
-  const ex=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
-  if(!ex.empty&&ex.docs[0].id!==phone)return await send(chatId,'Ты уже вошла под другим номером!\n\nСначала выйди: /logout');
-  await ref.set({telegramChatId:chatId},{merge:true});
-  delete userStates[chatId];
-  const data=snap.data();
-  const name=(data.name||'').split(' ')[0]||'красотка';
-  await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nТеперь буду напоминать о тренировках за 10 часов 😄`);
-  await showMenu(chatId,{phone,...data});
+
+  // Сначала ищем среди клиентов
+  const userRef=db.collection('users').doc(phone);
+  const userSnap=await userRef.get();
+
+  if(userSnap.exists){
+    const ex=await db.collection('users').where('telegramChatId','==',chatId).limit(1).get();
+    if(!ex.empty&&ex.docs[0].id!==phone)return await send(chatId,'Ты уже вошла под другим номером!\n\nСначала выйди: /logout');
+    await userRef.set({telegramChatId:chatId},{merge:true});
+    delete userStates[chatId];
+    const data=userSnap.data();
+    const name=(data.name||'').split(' ')[0]||'красотка';
+    await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nТеперь буду напоминать о тренировках за 10 часов 😄`);
+    return await showMenu(chatId,{phone,...data});
+  }
+
+  // Не клиент — ищем среди тренеров (ID документа = телефон)
+  const trainerRef=db.collection('trainers').doc(phone);
+  const trainerSnap=await trainerRef.get();
+
+  if(trainerSnap.exists){
+    await trainerRef.set({telegramChatId:chatId},{merge:true});
+    delete userStates[chatId];
+    const data=trainerSnap.data();
+    const name=(data.name||'').split(' ')[0]||'тренер';
+    await send(chatId,`🎉 Нашла тебя!\n\nДобро пожаловать, <b>${name}</b>! 🤍\n\nЯ пришлю список твоих клиентов на тренировках.`);
+    return await showTrainerMenu(chatId,{phone,...data});
+  }
+
+  return await send(chatId,'Не нашла такой номер 🔍\n\nТы точно регистрировалась на нашем сайте? Если нет — скорее туда! 🏋️‍♀️');
 }
 
 async function handleLogout(chatId){
