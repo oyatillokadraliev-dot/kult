@@ -838,28 +838,34 @@ function renderLK() {
     : '';
  
   // Сайдбар
-  const sb = document.getElementById('lk-sidebar');
-  if (hasAb) {
-    const total   = ab.total;
-    const used    = (left !== null && left !== undefined)
-      ? total - left          // сколько использовано
-      : bookings.filter((b) => b.status === 'attended').length;
-    const pct     = Math.min(100, Math.round(Math.max(0, used) / total * 100));
-    const leftStr = (left !== null && left !== undefined) ? left : '—';
- 
-    sb.innerHTML = `
-      <div class="lk-ab-active">
-        <div class="lk-ab-tag">Активный абонемент</div>
-        <div class="lk-ab-title">${esc(ab.label)}</div>
-        <div class="lk-ab-track">
-          <div class="lk-ab-fill" style="width:${pct}%"></div>
-        </div>
-        <div class="lk-ab-meta">Осталось занятий: <b>${leftStr}</b> из ${total}</div>
-        <button class="lk-ab-change" onclick="renderAbSelect()">Сменить абонемент</button>
-      </div>`;
-  } else {
-    sb.innerHTML = renderAbSelectHTML();
-  }
+const sb = document.getElementById('lk-sidebar');
+if (hasAb) {
+  const total   = ab.total;
+  const used    = (left !== null && left !== undefined)
+    ? total - left
+    : bookings.filter((b) => b.status === 'attended').length;
+  const pct     = Math.min(100, Math.round(Math.max(0, used) / total * 100));
+  const leftStr = (left !== null && left !== undefined) ? left : '—';
+
+  // Кнопка "Сменить абонемент" показывается только когда занятия закончились
+  const canChangeAb = (left !== null && left !== undefined) ? left <= 0 : false;
+
+  sb.innerHTML = `
+    <div class="lk-ab-active">
+      <div class="lk-ab-tag">Активный абонемент</div>
+      <div class="lk-ab-title">${esc(ab.label)}</div>
+      <div class="lk-ab-track">
+        <div class="lk-ab-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="lk-ab-meta">Осталось занятий: <b>${leftStr}</b> из ${total}</div>
+      ${canChangeAb
+        ? `<div style="margin-top:10px;padding:10px;background:rgba(220,38,38,.08);border-radius:8px;font-size:13px;color:var(--red)">Абонемент закончился</div>
+           <button class="lk-ab-change" onclick="renderAbSelect()">Выбрать новый абонемент</button>`
+        : ''}
+    </div>`;
+} else {
+  sb.innerHTML = renderAbSelectHTML();
+}
  
   // Telegram-баннер
   const tgBanner = document.getElementById('lk-telegram-banner');
@@ -947,8 +953,12 @@ function selectAb(id, el) {
 async function saveAb() {
   if (!pendingAbId) { toast('Выберите абонемент'); return; }
   try {
-    await dbSaveUser(user.phone, { abonement: pendingAbId });
+    const ab = ABONEMENTS.find((a) => a.id === pendingAbId);
+    const total = ab ? ab.total : 0;
+
+    await dbSaveUser(user.phone, { abonement: pendingAbId, sessionsLeft: total });
     user.abonement = pendingAbId;
+    user.sessionsLeft = total;
     save();
     renderLK();
     toast('Абонемент выбран!');
