@@ -434,10 +434,14 @@ async function handleCbReplay(cb,targetData){
 app.post('/webhook',async(req,res)=>{
   res.status(200).send('OK');
   const u=req.body;
+  console.log('[webhook] update:', u.message ? 'message' : u.callback_query ? 'callback' : 'other', JSON.stringify(u).slice(0,300));
   try{
     if(u.message)await handleMsg(u.message);
     else if(u.callback_query)await handleCb(u.callback_query);
-  }catch(e){console.error('Webhook error:',e.message);}
+  }catch(e){
+    console.error('[webhook] ERROR:', e.message);
+    console.error(e.stack);
+  }
 });
 app.get('/',(req,res)=>res.send('КУЛЬТ bot 🤍'));
 
