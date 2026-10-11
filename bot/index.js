@@ -48,6 +48,12 @@ function fmtDate(iso){
   const dn=['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
   return `${d.getDate()} ${mo[d.getMonth()]} (${dn[d.getDay()]}) в ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
+function fmtWeekday(iso){
+  if(!iso)return'';
+  const d=new Date(iso);
+  const days=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+  return days[d.getDay()];
+}
 function pluralPeople(n){
   const mod10=n%10,mod100=n%100;
   if(mod10===1&&mod100!==11)return 'человек';
@@ -128,10 +134,20 @@ async function getSlotClients(trainer,s){
     .where('name','==',s.name)
     .where('status','==','upcoming')
     .get();
+
+  const now=new Date();
+
   return snap.docs
     .map(d=>({id:d.id,...d.data()}))
     .filter(c=>c.time===s.time)
+    .filter(c=>!c.trainingDate||new Date(c.trainingDate)>=startOfToday(now)) // прошедшие по дате убираем
     .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
+}
+
+function startOfToday(d){
+  const x=new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
 }
 
 async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
@@ -153,9 +169,10 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   }else{
     text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
     clients.forEach((c,i)=>{
-      text+=`\n${i+1}. <b>${c.userName||'—'}</b> · +${c.phone||''}${c.trainingDate?' · '+fmtDate(c.trainingDate):''}`;
+      const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
+      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDate(c.trainingDate):''}`;
       rows.push([
-        {text:`✅ ${(c.userName||'—').split(' ')[0]} пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
+        {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
         {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
       ]);
     });
