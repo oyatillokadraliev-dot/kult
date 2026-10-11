@@ -41,6 +41,7 @@ const TRAININGS = {
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_MAP = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
 const DAY_LABEL_TO_KEY = { 'Пн': 'mon', 'Вт': 'tue', 'Ср': 'wed', 'Чт': 'thu', 'Пт': 'fri', 'Сб': 'sat' };
+const GROUP_DAYS = { mwf: ['mon', 'wed', 'fri'], tts: ['tue', 'thu', 'sat'] };
 const GROUP_DAYS_LABEL = { mwf: 'Пн, Ср, Пт', tts: 'Вт, Чт, Сб' };
 /* ── STATE ───────────────────────────────────────── */
 let user = JSON.parse(localStorage.getItem('xk_user') || 'null');
