@@ -41,8 +41,7 @@ const TRAININGS = {
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_MAP = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
 const DAY_LABEL_TO_KEY = { 'Пн': 'mon', 'Вт': 'tue', 'Ср': 'wed', 'Чт': 'thu', 'Пт': 'fri', 'Сб': 'sat' };
-const GROUP_DAYS = { mwf: ['mon', 'wed', 'fri'], tts: ['tue', 'thu', 'sat'] };
-
+const GROUP_DAYS_LABEL = { mwf: 'Пн, Ср, Пт', tts: 'Вт, Чт, Сб' };
 /* ── STATE ───────────────────────────────────────── */
 let user = JSON.parse(localStorage.getItem('xk_user') || 'null');
 let bookings = [];
@@ -142,10 +141,10 @@ async function loadScheduleFromDB() {
           name: s.name,
           trainer: s.trainer || '',
           key: s.key || null,
+          group: s.group || '', 
         });
       });
     });
-
     // Если в базе пусто — показываем запасное расписание Пн/Ср/Пт
     if (snap.empty) {
       ['mon', 'wed', 'fri'].forEach((dayKey) => {
@@ -462,7 +461,7 @@ function renderSchedule() {
     const items = SCHEDULE[day] || [];
     el.innerHTML = items.length
       ? items.map((s) => `
-            <div class="sched-card" onclick="openTraining(${jsArg(s.key || '')}, ${jsArg(s.name)}, ${jsArg(s.trainer)}, ${jsArg(s.time)})">
+            <div class="sched-card" onclick="openTraining(${jsArg(s.key || '')}, ${jsArg(s.name)}, ${jsArg(s.trainer)}, ${jsArg(s.time)}, ${jsArg(s.group || '')})">
           <span class="sched-time">${esc(s.time)}</span>
           <div>
             <div class="sched-info-name">${esc(s.name)}</div>
@@ -572,14 +571,11 @@ document.getElementById('tp-sched').innerHTML = (t.schedule || []).map((s) => `
 }
 
 /* ── TRAINING MODAL ──────────────────────────────── */
-function openTraining(key, name, trainer, time) {
-  // Описание: по ключу, либо по названию (для тренировок из базы)
+function openTraining(key, name, trainer, time, group) {
   const t = (key && TRAININGS[key]) || Object.values(TRAININGS).find((x) => x.name === name) || { name, tags: [], what: '', includes: '', who: '' };
 
-  // Дни берём из расписания тренера
-  const trainerObj = Object.values(TRAINERS_FROM_DB).find((tr) => tr.name === trainer);
-  const schedEntry = trainerObj ? trainerObj.schedule.find((s) => s.time === time) : null;
-  const days = schedEntry ? schedEntry.days : '';
+  // Дни берём из group слота расписания, а не из trainer.schedule
+  const days = GROUP_DAYS_LABEL[group] || '';
 
   document.getElementById('training-content').innerHTML = `
     <h2 class="modal-title">${esc(t.name)}</h2>
@@ -588,7 +584,7 @@ function openTraining(key, name, trainer, time) {
     ${t.includes ? `<div class="t-block"><h4>Что входит</h4><p>${esc(t.includes)}</p></div>` : ''}
     ${t.who ? `<div class="t-block"><h4>Для кого</h4><p>${esc(t.who)}</p></div>` : ''}
     <div class="t-block"><h4>Тренер</h4><p>${esc(trainer)}</p></div>
-      <button class="form-submit" style="margin-top:20px" onclick="closeOv('ov-training');openBookingModal(${jsArg(name)}, ${jsArg(trainer)}, ${jsArg(time)}, ${jsArg(days)})">Записаться</button>`;
+    <button class="form-submit" style="margin-top:20px" onclick="closeOv('ov-training');openBookingModal(${jsArg(name)}, ${jsArg(trainer)}, ${jsArg(time)}, ${jsArg(days)})">Записаться</button>`;
   openOv('ov-training');
 }
 
@@ -613,6 +609,12 @@ function formatDateShort(iso) {
   const d = new Date(iso);
   const months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
   return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+function fmtWeekday(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+  return days[d.getDay()];
 }
 
 /* ── BOOKING ─────────────────────────────────────── */
@@ -1013,19 +1015,33 @@ async function renderTC() {
   const list = document.getElementById('tc-list');
   list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
 
-  // Все записи этого тренера одним запросом
-   const all = await dbGetTrainerBookings(user.trainerKey, trainer.name);
-   all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
+  const allRaw = await dbGetTrainerBookings(user.trainerKey, trainer.name);
 
-  // Группируем по времени и названию
+  // Тренер видит только будущие и не отмеченные (status upcoming) записи.
+  // Записи без даты (старый мусор) тоже скрываем, чтобы не путать.
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+
+  const all = allRaw.filter((b) => {
+    if (b.status !== 'upcoming') return false;       // уже отмеченные скрываем
+    if (!b.trainingDate) return false;                // без даты — не показываем (см. патч 1)
+    return new Date(b.trainingDate) >= startToday;    // прошедшие даты скрываем
+  });
+
+  all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
+
+  // Группируем по времени, названию И дню недели — чтобы Пн/Ср/Пт не схлопывались в одну строку
   const groups = {};
   all.forEach((b) => {
-    const key = `${b.time}|${b.name}`;
-    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: b.days, clients: [] };
+    const dayLabel = fmtWeekday(b.trainingDate);
+    const key = `${b.time}|${b.name}|${dayLabel}`;
+    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: dayLabel, clients: [] };
     groups[key].clients.push(b);
   });
 
-  const items = Object.values(groups).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  const items = Object.values(groups).sort((a, b) =>
+    String(a.time).localeCompare(String(b.time)) || new Date(all.find(x=>x.time===a.time)?.trainingDate||0) - new Date(all.find(x=>x.time===b.time)?.trainingDate||0)
+  );
 
   list.innerHTML = items.length
     ? items.map((s, i) => `
@@ -1036,7 +1052,7 @@ async function renderTC() {
             <div class="tc-group-name">${esc(s.name)}</div>
             <div class="tc-group-days">${esc(s.days || '')}</div>
           </div>
-          <span class="tc-group-count">${s.clients.length} клиентов</span>
+          <span class="tc-group-count">${s.clients.length} ${s.clients.length===1?'клиент':'клиентов'}</span>
         </div>
         <div class="tc-clients-list" id="tc-cl-${i}">
           ${s.clients.map((c) => `
@@ -1060,9 +1076,8 @@ async function renderTC() {
             </div>`).join('')}
         </div>
       </div>`).join('')
-    : '<div class="lk-empty-state">Записей пока нет</div>';
+    : '<div class="lk-empty-state">Актуальных записей нет</div>';
 }
-
 function toggleTC(i) {
   document.getElementById('tc-cl-' + i)?.classList.toggle('open');
 }
