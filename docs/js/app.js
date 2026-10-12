@@ -458,11 +458,11 @@ function getRawPhone(val) { return normalizePhone(val); }
 function renderSchedule() {
   DAY_KEYS.forEach((day) => {
     const el = document.getElementById('sched-' + day);
-    if (!el) return; // контейнера нет в HTML — пропускаем
+    if (!el) return;
     const items = SCHEDULE[day] || [];
     el.innerHTML = items.length
       ? items.map((s) => `
-            <div class="sched-card" onclick="openTraining(${jsArg(s.key || '')}, ${jsArg(s.name)}, ${jsArg(s.trainer)}, ${jsArg(s.time)}, ${jsArg(s.group || '')})">
+            <div class="sched-card" onclick="openTraining(${jsArg(s.key || '')}, ${jsArg(s.name)}, ${jsArg(s.trainer)}, ${jsArg(s.time)}, ${jsArg(day)})">
           <span class="sched-time">${esc(s.time)}</span>
           <div>
             <div class="sched-info-name">${esc(s.name)}</div>
@@ -572,11 +572,13 @@ document.getElementById('tp-sched').innerHTML = (t.schedule || []).map((s) => `
 }
 
 /* ── TRAINING MODAL ──────────────────────────────── */
-function openTraining(key, name, trainer, time, group) {
+const DAY_KEY_TO_LABEL = { mon: 'Пн', tue: 'Вт', wed: 'Ср', thu: 'Чт', fri: 'Пт', sat: 'Сб' };
+
+function openTraining(key, name, trainer, time, day) {
   const t = (key && TRAININGS[key]) || Object.values(TRAININGS).find((x) => x.name === name) || { name, tags: [], what: '', includes: '', who: '' };
 
-  // Дни берём из group слота расписания, а не из trainer.schedule
-  const days = GROUP_DAYS_LABEL[group] || '';
+  // Теперь days — это ОДИН конкретный день, а не весь список "Пн, Ср, Пт"
+  const days = DAY_KEY_TO_LABEL[day] || '';
 
   document.getElementById('training-content').innerHTML = `
     <h2 class="modal-title">${esc(t.name)}</h2>
