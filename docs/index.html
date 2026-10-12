@@ -51,9 +51,20 @@
   "image": "https://sport-kult.ru/images/hero-collage.jpg"
 }
 </script>
-
-<title>КУЛЬТ — женский спортивный клуб</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=DM+Sans:wght@300;400;500&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<style> 
+  .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=DM+Sans:wght@300;400;500&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -102,10 +113,11 @@
   <div class="hero-orb hero-orb-2"></div>
   <div class="hero-inner">
     <div class="hero-tag">Женский спортивный клуб · Астрахань</div>
-    <h1 class="hero-title">
-      <span>К</span><span>У</span><span>Л</span><span>Ь</span><span>Т</span>
-      <span class="hero-signature">sport</span>
-    </h1>
+<h1 class="hero-title" aria-label="КУЛЬТ — женский спортивный клуб в Астрахани">
+  <span aria-hidden="true">К</span><span aria-hidden="true">У</span><span aria-hidden="true">Л</span><span aria-hidden="true">Ь</span><span aria-hidden="true">Т</span>
+  <span class="hero-signature" aria-hidden="true">sport</span>
+  <span class="visually-hidden">КУЛЬТ — женский спортивный клуб в Астрахани</span>
+</h1>
     <p class="hero-sub">Про женское тело, движение и любовь к себе. Про заботу о себе, привычки и комьюнити, в котором хочется остаться.</p>
     <div class="hero-cta-row">
       <button class="hero-btn-main" onclick="navTo('schedule')">Записаться на тренировку</button>
