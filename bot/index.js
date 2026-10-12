@@ -48,6 +48,12 @@ function fmtDate(iso){
   const dn=['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
   return `${d.getDate()} ${mo[d.getMonth()]} (${dn[d.getDay()]}) в ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
+function fmtDateNoTime(iso){
+  if(!iso)return'';
+  const d=new Date(iso);
+  const mo=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  return `${d.getDate()} ${mo[d.getMonth()]}`;
+}
 function fmtWeekday(iso){
   if(!iso)return'';
   const d=new Date(iso);
@@ -170,13 +176,17 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
     text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
     clients.forEach((c,i)=>{
       const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
-      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDate(c.trainingDate):''}`;
+      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
       rows.push([
         {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
         {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
       ]);
     });
   }
+
+  rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
+  await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:rows}});
+}
 
   rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
   await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:rows}});
