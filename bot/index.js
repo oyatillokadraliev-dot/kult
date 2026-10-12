@@ -187,11 +187,6 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
   await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:rows}});
 }
-
-  rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
-  await edit(chatId,msgId,text,{reply_markup:{inline_keyboard:rows}});
-}
-
 /* ═══════════════════════════════════════════════════════════
    ОПРЕДЕЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (клиент или тренер) ПО chatId
    ═══════════════════════════════════════════════════════════ */
