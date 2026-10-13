@@ -8,8 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#F8F6F3;--surface:#EDE8E1;--ink:#1C1917;--muted:#78716C;--forest:#332E28;--gold:#C9A96E;--white:#fff;--red:#dc2626;--green:#16a34a;--border:rgba(28,25,23,.12);--r:12px;--sh:0 2px 12px rgba(28,25,23,.08)}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh}
+:root{--bg:#F8F6F3;--surface:#EDE8E1;--ink:#1C1917;--muted:#78716C;--forest:#332E28;--gold:#C9A96E;--white:#fff;--red:#dc2626;--green:#16a34a;--border:rgba(28,25,23,.12);--r:12px;--sh:0 2px 12px rgba(28,25,23,.08)}
 
 /* LOGIN */
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;padding:24px}
@@ -174,6 +174,7 @@ textarea{resize:vertical;min-height:90px}
       <button class="nav-btn" onclick="go('schedule',this)">📅 Расписание</button>
       <button class="nav-btn" onclick="go('trainers',this)">👩 Тренеры</button>
       <button class="nav-btn" onclick="go('clients',this)">👥 Клиенты</button>
+      <button class="nav-btn" onclick="go('recurring',this)">🔁 Постоянные</button>
       <button class="nav-btn" onclick="go('prices',this)">💳 Цены</button>
       <div class="sep"></div>
       <button class="nav-btn" onclick="go('settings',this)">⚙️ Настройки</button>
@@ -243,6 +244,30 @@ textarea{resize:vertical;min-height:90px}
                 </tr>
               </thead>
               <tbody id="clients-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECURRING (постоянные клиенты) -->
+      <div class="sec" id="sec-recurring">
+        <div class="sec-head">
+          <div class="sec-title">Постоянные клиенты</div>
+          <button class="btn btn-p" onclick="openRecurring()">+ Прикрепить</button>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin:-12px 0 20px">
+          Постоянный клиент числится на выбранной тренировке каждую неделю без записи на сайте.
+          Тренер видит его в своём кабинете / боте и просто отмечает «пришла / не пришла» — занятие по абонементу спишется автоматически в момент отметки.
+        </p>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Клиент</th><th>Тренировка</th><th>Тренер</th><th>Время</th><th>Дни</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="recurring-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Загрузка...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -396,6 +421,32 @@ textarea{resize:vertical;min-height:90px}
   </div>
 </div>
 
+<!-- MODAL RECURRING -->
+<div class="ov" id="m-recurring">
+  <div class="modal">
+    <button class="modal-close" onclick="closeM('m-recurring')" aria-label="Закрыть">×</button>
+    <div class="modal-title">Прикрепить постоянного клиента</div>
+    <div class="row row-1">
+      <div class="fg">
+        <label>Клиент</label>
+        <input id="rc-client-search" placeholder="Начните вводить имя или телефон..." oninput="filterRecurringClientOptions()" autocomplete="off">
+        <select id="rc-client" size="6" style="margin-top:6px"></select>
+      </div>
+    </div>
+    <div class="row row-1">
+      <div class="fg">
+        <label>Тренировка (слот)</label>
+        <select id="rc-slot"></select>
+      </div>
+    </div>
+    <div class="hint" id="rc-hint"></div>
+    <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="saveRecurring()">Прикрепить</button>
+      <button class="btn btn-g" onclick="closeM('m-recurring')">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -482,7 +533,7 @@ function go(name, btn) {
   if (btn) btn.classList.add('active');
   const loaders = {
     dashboard: loadDashboard, schedule: loadSchedule, trainers: loadTrainers,
-    clients: loadClients, prices: loadPrices, settings: loadSettings,
+    clients: loadClients, recurring: loadRecurring, prices: loadPrices, settings: loadSettings,
   };
   if (loaders[name]) loaders[name]();
   window.scrollTo(0, 0);
@@ -787,7 +838,8 @@ function openEditClient(phone) {
   document.getElementById('cl-name').value = c.name || '';
   const phoneEl = document.getElementById('cl-phone');
   phoneEl.value = c.phone;
-  phoneEl.readOnly = true;   // телефон — ID документа, не меняем
+  phoneEl.readOnly = true;
+  // телефон — ID документа, не меняем
   document.getElementById('cl-ab').value = c.abonement || '';
   document.getElementById('cl-sessions').value = c.sessionsLeft ?? '';
   document.getElementById('del-client').style.display = 'inline-flex';
@@ -856,6 +908,118 @@ async function delClient() {
   closeM('m-client');
   await loadClients();
   toast('Клиент удалён');
+}
+
+/* ── RECURRING (постоянные клиенты) ───────────────── */
+let recurringCache = [];
+let recurringClientOptions = []; // [{phone,name}] для выпадающего списка в модалке
+
+async function loadRecurring() {
+  // Подгружаем всё нужное параллельно
+  const [recSnap] = await Promise.all([
+    db.collection('recurringAssignments').get(),
+    loadTrainersData(),
+    loadSchedule(), // наполняет schedCache, нужен для названий слотов
+    loadClientsForRecurring(),
+  ]);
+  recurringCache = recSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((r) => r.active !== false)
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  renderRecurring();
+}
+
+async function loadClientsForRecurring() {
+  if (clientsCache.length) return; // уже загружены на вкладке "Клиенты"
+  const snap = await db.collection('users').get();
+  clientsCache = snap.docs.map((d) => ({ phone: d.id, ...d.data() }));
+}
+
+function renderRecurring() {
+  const tbody = document.getElementById('recurring-tbody');
+  tbody.innerHTML = recurringCache.length
+    ? recurringCache.map((r) => `
+      <tr>
+        <td>${esc(r.userName || '—')}<div style="font-size:12px;color:var(--muted)"><code>+${esc(r.phone || '')}</code></div></td>
+        <td>${esc(r.slotName || '—')}</td>
+        <td>${esc(r.trainerName || '—')}</td>
+        <td>${esc(r.time || '—')}</td>
+        <td>${esc(r.daysLabel || '—')}</td>
+        <td><button class="btn btn-d btn-sm" onclick="unassignRecurring('${esc(r.id)}')">Отвязать</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Постоянных клиентов пока нет</td></tr>';
+}
+
+const GROUP_DAYS_LABEL = { mwf: 'Пн, Ср, Пт', tts: 'Вт, Чт, Сб' };
+
+function openRecurring() {
+  document.getElementById('rc-client-search').value = '';
+  renderRecurringClientSelect(clientsCache);
+
+  const slotSelect = document.getElementById('rc-slot');
+  const slots = Object.values(schedCache).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  slotSelect.innerHTML = slots.length
+    ? slots.map((s) => `<option value="${esc(s.id)}">${esc(s.time)} · ${esc(s.name)} · ${esc(s.trainer)} (${esc(GROUP_DAYS_LABEL[s.group] || '')})</option>`).join('')
+    : '<option value="">Нет доступных тренировок — сначала добавьте расписание</option>';
+
+  document.getElementById('rc-hint').textContent = '';
+  openM('m-recurring');
+}
+
+function renderRecurringClientSelect(list) {
+  const sel = document.getElementById('rc-client');
+  sel.innerHTML = list.length
+    ? list.map((c) => `<option value="${esc(c.phone)}">${esc(c.name || '—')} · +${esc(c.phone)}</option>`).join('')
+    : '<option value="">Клиенты не найдены</option>';
+}
+
+function filterRecurringClientOptions() {
+  const q = document.getElementById('rc-client-search').value.toLowerCase();
+  const digits = q.replace(/\D/g, '');
+  renderRecurringClientSelect(clientsCache.filter((c) =>
+    (c.name || '').toLowerCase().includes(q) ||
+    (digits && String(c.phone).includes(digits))
+  ));
+}
+
+async function saveRecurring() {
+  const phone = document.getElementById('rc-client').value;
+  const slotId = document.getElementById('rc-slot').value;
+  if (!phone) return toast('Выберите клиента');
+  if (!slotId) return toast('Выберите тренировку');
+
+  const client = clientsCache.find((c) => c.phone === phone);
+  const slot = schedCache[slotId];
+  if (!client || !slot) return toast('Не удалось найти выбранные данные, попробуйте снова');
+
+  // Проверка на дубликат: тот же клиент уже прикреплён к этому же слоту
+  const dup = recurringCache.find((r) => r.phone === phone && r.slotId === slotId && r.active !== false);
+  if (dup) return toast('Этот клиент уже прикреплён к этой тренировке');
+
+  const data = {
+    phone,
+    userName: client.name || '',
+    slotId,
+    slotName: slot.name,
+    time: slot.time,
+    group: slot.group,
+    daysLabel: GROUP_DAYS_LABEL[slot.group] || '',
+    trainerName: slot.trainer,
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+
+  await safe(() => db.collection('recurringAssignments').add(data));
+  closeM('m-recurring');
+  await loadRecurring();
+  toast('✅ Клиент прикреплён');
+}
+
+async function unassignRecurring(id) {
+  if (!confirm('Отвязать этого клиента от постоянной тренировки?')) return;
+  await safe(() => db.collection('recurringAssignments').doc(id).delete(), 'Не удалось отвязать');
+  await loadRecurring();
+  toast('Клиент отвязан');
 }
 
 /* ── PRICES ──────────────────────────────────────── */
