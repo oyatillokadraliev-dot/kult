@@ -82,6 +82,75 @@ async function getTrainerSchedule(trainer){
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ПОСТОЯННЫЕ КЛИЕНТЫ (recurringAssignments)
+   ═══════════════════════════════════════════════════════════ */
+
+async function getRecurringForTrainer(trainerName){
+  const snap=await db.collection('recurringAssignments').where('trainerName','==',trainerName).get();
+  return snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.active!==false);
+}
+
+function startOfToday(d){
+  const x=new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function endOfToday(d){
+  return new Date(startOfToday(d).getTime()+86400000);
+}
+
+/* booking постоянного клиента на СЕГОДНЯ, если уже создан (чтобы не дать отметить дважды) */
+async function getTodayBookingForRecurring(recurringId){
+  const snap=await db.collection('bookings').where('recurringId','==',recurringId).get();
+  const s=startOfToday(new Date()), e=endOfToday(new Date());
+  const todays=snap.docs
+    .map(d=>({id:d.id,...d.data()}))
+    .filter(b=>b.trainingDate&&new Date(b.trainingDate)>=s&&new Date(b.trainingDate)<e);
+  return todays[0]||null;
+}
+
+/* Создаёт (или обновляет) отметку посещения постоянного клиента на сегодня,
+   списывая занятие по абонементу в момент отметки — как и на сайте. */
+async function markRecurringAttendance(recurring,status){
+  const existing=await getTodayBookingForRecurring(recurring.id);
+  if(existing){
+    await db.collection('bookings').doc(existing.id).set({status},{merge:true});
+    return existing.id;
+  }
+
+  const now=new Date();
+  const bookingData={
+    name:recurring.slotName,
+    trainer:recurring.trainerName,
+    time:recurring.time,
+    days:recurring.daysLabel||'',
+    phone:recurring.phone,
+    userName:recurring.userName,
+    trainerKey:null,
+    status,
+    trainingDate:now.toISOString(),
+    recurringId:recurring.id,
+    source:'recurring',
+  };
+
+  const userRef=db.collection('users').doc(recurring.phone);
+  const bookRef=db.collection('bookings').doc();
+
+  await db.runTransaction(async(tx)=>{
+    const userSnap=await tx.get(userRef);
+    tx.set(bookRef,{...bookingData,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+    if(userSnap.exists){
+      const currentLeft=userSnap.data().sessionsLeft;
+      if(currentLeft!==null&&currentLeft!==undefined){
+        tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
+      }
+    }
+  });
+
+  return bookRef.id;
+}
+
+/* ═══════════════════════════════════════════════════════════
    КЛИЕНТ — меню и тексты
    ═══════════════════════════════════════════════════════════ */
 
@@ -150,10 +219,25 @@ async function getSlotClients(trainer,s){
     .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
 }
 
-function startOfToday(d){
-  const x=new Date(d);
-  x.setHours(0,0,0,0);
-  return x;
+/* Постоянные клиенты, которые сегодня должны прийти на этот слот и ещё не отмечены сегодня */
+async function getRecurringSlotClients(trainer,s){
+  const todayAbbr=DAY_ABBR[new Date().getDay()];
+  if(!s.days||!s.days.split(',').map(x=>x.trim()).includes(todayAbbr))return [];
+
+  const all=await getRecurringForTrainer(trainer.name);
+  const matching=all.filter(r=>r.slotName===s.name&&r.time===s.time);
+  if(!matching.length)return [];
+
+  const now=new Date(),st=startOfToday(now),en=endOfToday(now);
+  // Исключаем тех, у кого на сегодня уже есть booking со статусом != upcoming (уже отмечены)
+  const snap=await db.collection('bookings').where('trainer','==',trainer.name).get();
+  const markedTodayRecIds=new Set(
+    snap.docs.map(d=>d.data())
+      .filter(b=>b.recurringId&&b.trainingDate&&new Date(b.trainingDate)>=st&&new Date(b.trainingDate)<en&&b.status!=='upcoming')
+      .map(b=>b.recurringId)
+  );
+
+  return matching.filter(r=>!markedTodayRecIds.has(r.id));
 }
 
 async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
@@ -165,23 +249,53 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   const s=schedule[slotIndex];
   if(!s)return await edit(chatId,msgId,'Занятие не найдено. Открой список тренировок заново.',{reply_markup:backTrainerBtn});
 
-  const clients=await getSlotClients(trainer,s);
+  const [clients,recurringClients]=await Promise.all([
+    getSlotClients(trainer,s),
+    getRecurringSlotClients(trainer,s),
+  ]);
+
+  // Подтягиваем остатки абонемента постоянных клиентов, чтобы показать предупреждение
+  const recWithLeft=await Promise.all(recurringClients.map(async(r)=>{
+    try{
+      const uSnap=await db.collection('users').doc(r.phone).get();
+      const left=uSnap.exists?uSnap.data().sessionsLeft:undefined;
+      return {...r,sessionsLeft:left};
+    }catch(e){return {...r,sessionsLeft:undefined};}
+  }));
+
+  const totalCount=clients.length+recWithLeft.length;
 
   let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · ${s.days||''}\n\n`;
   const rows=[];
 
-  if(!clients.length){
+  if(!totalCount){
     text+='👥 Записалось: <b>0 человек</b>\n\nПока никто не записан на это занятие.';
   }else{
-    text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
-    clients.forEach((c,i)=>{
-      const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
-      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
-      rows.push([
-        {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
-        {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
-      ]);
-    });
+    text+=`👥 Всего: <b>${totalCount} ${pluralPeople(totalCount)}</b>\n\nОтметь посещаемость:\n`;
+
+    if(recWithLeft.length){
+      text+='\n<b>🔁 Постоянные клиенты:</b>\n';
+      recWithLeft.forEach((r,i)=>{
+        const noSessions=(r.sessionsLeft!==null&&r.sessionsLeft!==undefined&&r.sessionsLeft<=0);
+        text+=`\n${i+1}. <b>${r.userName||'—'}</b>${noSessions?' · <i>абонемент закончился</i>':''}\n   📱 +${r.phone||''}`;
+        rows.push([
+          {text:`✅ ${(r.userName||'—').split(' ')[0]} пришла`,callback_data:`t_rmark:${r.id}:attended:${slotIndex}`},
+          {text:'❌ Не пришла',callback_data:`t_rmark:${r.id}:missed:${slotIndex}`},
+        ]);
+      });
+    }
+
+    if(clients.length){
+      text+='\n\n<b>🆕 Разовые записи:</b>\n';
+      clients.forEach((c,i)=>{
+        const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
+        text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
+        rows.push([
+          {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
+          {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
+        ]);
+      });
+    }
   }
 
   rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
@@ -311,6 +425,23 @@ async function handleCb(cb){
       const[,bookingId,status,slotIndex]=data.split(':');
       await db.collection('bookings').doc(bookingId).set({status},{merge:true});
       await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
+      return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
+    }
+    if(data.startsWith('t_rmark:')){
+      const[,recurringId,status,slotIndex]=data.split(':');
+      try{
+        const rSnap=await db.collection('recurringAssignments').doc(recurringId).get();
+        if(!rSnap.exists){
+          await answer(cb.id,'Это прикрепление больше не существует',true);
+        }else{
+          const recurring={id:rSnap.id,...rSnap.data()};
+          await markRecurringAttendance(recurring,status);
+          await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
+        }
+      }catch(e){
+        console.error('Ошибка отметки постоянного клиента:',e.message);
+        await answer(cb.id,'Не удалось сохранить отметку',true);
+      }
       return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
     }
     if(data==='logout'){
@@ -529,10 +660,14 @@ cron.schedule('0 8 * * *',async()=>{
       let text=`☀️ <b>Доброе утро, ${(trainer.name||'').split(' ')[0]||'тренер'}!</b>\n\nВот твои тренировки на сегодня:\n\n`;
 
       for(const s of todaySlots){
-        const clients=await getSlotClients(trainer,s);
+        const [clients,recurringClients]=await Promise.all([
+          getSlotClients(trainer,s),
+          getRecurringSlotClients(trainer,s),
+        ]);
+        const totalCount=clients.length+recurringClients.length;
         text+=`🏋️‍♀️ <b>${s.time} · ${s.name}</b>\n`;
-        text+=clients.length
-          ?`   👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n`
+        text+=totalCount
+          ?`   👥 Записалось: <b>${totalCount} ${pluralPeople(totalCount)}</b>${recurringClients.length?` (из них постоянных: ${recurringClients.length})`:''}\n`
           :`   👥 Записалось: <b>0 человек</b>\n`;
       }
 
