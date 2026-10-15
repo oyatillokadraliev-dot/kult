@@ -239,7 +239,7 @@ textarea{resize:vertical;min-height:90px}
             <table class="tbl">
               <thead>
                 <tr>
-                  <th>Имя</th><th>Телефон</th><th>Абонемент</th>
+                  <th>Имя</th><th>Телефон</th><th>Тренер</th><th>Абонемент</th>
                   <th>Осталось</th><th>Telegram</th><th></th>
                 </tr>
               </thead>
@@ -410,6 +410,14 @@ textarea{resize:vertical;min-height:90px}
         <label>Осталось занятий</label>
         <input id="cl-sessions" type="number" inputmode="numeric" min="0" placeholder="8">
         <div id="cl-sessions-hint" class="hint"></div>
+      </div>
+    </div>
+
+    <div class="row row-1">
+      <div class="fg">
+        <label>Основной тренер</label>
+        <select id="cl-trainer"><option value="">— не выбран —</option></select>
+        <div class="hint">Это просто пометка «кто основной тренер клиента» — записаться к другим тренерам клиент всё равно может.</div>
       </div>
     </div>
 
@@ -656,7 +664,12 @@ async function delSlot() {
 /* ── TRAINERS ────────────────────────────────────── */
 let trPhotoBase64 = '';
 
-function compressImageToDataUrl(file, maxSize = 300, quality = 0.7) {
+function compressImageToDataUrl(file, maxSize = 700, quality = 0.82) {
+  // Было maxSize=300/quality=0.7 — на карточках тренеров (особенно на главной странице,
+  // где фото показывается крупно) это давало заметно размытую картинку. 700px/0.82 даёт
+  // гораздо более чёткое изображение, при этом base64 обычно укладывается в несколько
+  // сотен КБ — лимит Firestore на документ (1 МБ) учтён отдельной проверкой ниже
+  // (photoBase64.length > 900000), она осталась без изменений.
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -792,6 +805,7 @@ function renderClients(list) {
         return `<tr>
           <td>${esc(c.name || '—')}</td>
           <td><code>+${esc(c.phone)}</code></td>
+          <td>${c.trainer ? esc(c.trainer) : '<span style="color:var(--muted)">—</span>'}</td>
           <td>${c.abonement
             ? `<span class="bdg bdg-y">${esc(abLabel)}</span>`
             : '<span class="bdg">—</span>'}</td>
@@ -804,7 +818,7 @@ function renderClients(list) {
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Клиентов нет</td></tr>';
+    : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Клиентов нет</td></tr>';
 }
 
 function filterClients() {
@@ -816,7 +830,16 @@ function filterClients() {
   ));
 }
 
-function openClient() {
+async function fillClientTrainerSelect(selectedName) {
+  if (!Object.keys(trainersCache).length) await loadTrainersData();
+  const sel = document.getElementById('cl-trainer');
+  sel.innerHTML = '<option value="">— не выбран —</option>' +
+    Object.values(trainersCache).map((t) =>
+      `<option value="${esc(t.name)}"${t.name === selectedName ? ' selected' : ''}>${esc(t.name)}</option>`
+    ).join('');
+}
+
+async function openClient() {
   document.getElementById('cl-mode').value = 'add';
   document.getElementById('m-client-title').textContent = 'Добавить клиента';
   document.getElementById('cl-name').value = '';
@@ -826,11 +849,12 @@ function openClient() {
   document.getElementById('cl-ab').value = '';
   document.getElementById('cl-sessions').value = '';
   document.getElementById('del-client').style.display = 'none';
+  await fillClientTrainerSelect('');
   updateSessionsHint();
   openM('m-client');
 }
 
-function openEditClient(phone) {
+async function openEditClient(phone) {
   const c = clientsCache.find((x) => x.phone === phone);
   if (!c) return;
   document.getElementById('cl-mode').value = 'edit';
@@ -842,6 +866,7 @@ function openEditClient(phone) {
   // телефон — ID документа, не меняем
   document.getElementById('cl-ab').value = c.abonement || '';
   document.getElementById('cl-sessions').value = c.sessionsLeft ?? '';
+  await fillClientTrainerSelect(c.trainer || '');
   document.getElementById('del-client').style.display = 'inline-flex';
   updateSessionsHint();
   openM('m-client');
@@ -879,9 +904,12 @@ async function saveClient() {
   if (!name) return toast('Введите имя клиента');
   if (phone.length !== 11) return toast('Введите корректный номер телефона');
 
+  const trainer = document.getElementById('cl-trainer').value;
+
   const data = {
     name,
     phone,
+    trainer: trainer || null, // "основной тренер" клиента — просто пометка, не ограничивает запись к другим
     abonement: ab || null,
     sessionsLeft,
     addedByAdmin: true,
@@ -1009,15 +1037,86 @@ async function saveRecurring() {
     createdAt: new Date().toISOString(),
   };
 
-  await safe(() => db.collection('recurringAssignments').add(data));
+  let newId;
+  await safe(async () => {
+    const ref = await db.collection('recurringAssignments').add(data);
+    newId = ref.id;
+  });
+  if (newId) {
+    // Сразу генерируем bookings вперёд, чтобы клиент и тренер увидели результат немедленно,
+    // не дожидаясь, пока тренер первый раз откроет свой кабинет (там тоже есть "доливка").
+    try { await generateRecurringBookings({ id: newId, ...data }); }
+    catch (e) { console.error('Не удалось сгенерировать записи для нового прикрепления:', e); }
+  }
   closeM('m-recurring');
   await loadRecurring();
   toast('✅ Клиент прикреплён');
 }
 
+const RECURRING_WEEKS_AHEAD = 8;
+const DAY_MAP_RC = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
+
+function upcomingDatesForDaysRC(daysStr, timeStr, fromDate, weeksAhead) {
+  const targetDows = (daysStr || '').split(',').map((s) => DAY_MAP_RC[s.trim()]).filter((x) => x !== undefined);
+  if (!targetDows.length) return [];
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
+  const dates = [];
+  const horizonDays = weeksAhead * 7 + 7;
+  for (let i = 0; i < horizonDays; i++) {
+    const cand = new Date(fromDate);
+    cand.setDate(cand.getDate() + i);
+    cand.setHours(hh, mm, 0, 0);
+    if (targetDows.includes(cand.getDay()) && cand >= fromDate) dates.push(cand);
+  }
+  return dates;
+}
+
+/* Генерирует недостающие bookings вперёд для одного recurring-прикрепления.
+   Та же модель, что и в app.js (кабинет тренера на сайте): recurring-клиент получает
+   обычные документы bookings со status: 'upcoming' и source: 'recurring', чтобы клиент
+   видел их в своём личном кабинете и мог отменить конкретную дату, а тренер видел клиента
+   в слоте даже до отметки посещения. */
+async function generateRecurringBookings(recurring) {
+  const existingSnap = await db.collection('bookings').where('recurringId', '==', recurring.id).get();
+  const existingDates = new Set(existingSnap.docs.map((d) => d.data().trainingDate).filter(Boolean));
+
+  const now = new Date();
+  const candidateDates = upcomingDatesForDaysRC(recurring.daysLabel, recurring.time, now, RECURRING_WEEKS_AHEAD);
+
+  for (const dt of candidateDates) {
+    const iso = dt.toISOString();
+    if (existingDates.has(iso)) continue;
+    await db.collection('bookings').add({
+      name: recurring.slotName,
+      trainer: recurring.trainerName,
+      time: recurring.time,
+      days: recurring.daysLabel || '',
+      phone: recurring.phone,
+      userName: recurring.userName,
+      trainerKey: null,
+      status: 'upcoming',
+      trainingDate: iso,
+      recurringId: recurring.id,
+      source: 'recurring',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
 async function unassignRecurring(id) {
-  if (!confirm('Отвязать этого клиента от постоянной тренировки?')) return;
+  if (!confirm('Отвязать этого клиента от постоянной тренировки? Уже сгенерированные будущие тренировки тоже будут отменены.')) return;
   await safe(() => db.collection('recurringAssignments').doc(id).delete(), 'Не удалось отвязать');
+  // Отменяем все ещё не прошедшие сгенерированные bookings этого прикрепления,
+  // чтобы они не продолжали висеть "предстоящими" у клиента и тренера после отвязки.
+  try {
+    const snap = await db.collection('bookings')
+      .where('recurringId', '==', id)
+      .where('status', '==', 'upcoming')
+      .get();
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.update(d.ref, { status: 'cancelled_by_client' }));
+    if (snap.docs.length) await batch.commit();
+  } catch (e) { console.error('Не удалось отменить будущие записи после отвязки:', e); }
   await loadRecurring();
   toast('Клиент отвязан');
 }
