@@ -335,6 +335,24 @@
   </div>
 </div>
 
+  <div class="overlay" id="ov-guest">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeOv('ov-guest')" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <h2 class="modal-title">Добавить гостя</h2>
+    <p class="modal-sub" id="guest-sub"></p>
+    <div class="form-group">
+      <label class="form-label">Имя</label>
+      <input class="form-input" type="text" id="guest-name" placeholder="Имя гостя">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Телефон (необязательно)</label>
+      <input class="form-input" type="tel" id="guest-phone" placeholder="79001234567">
+    </div>
+    <button class="form-submit" id="btn-confirm-guest" onclick="confirmGuest()">Добавить гостя</button>
+  </div>
+</div>
+ 
+
 <div class="overlay" id="ov-review">
   <div class="modal-box">
     <button class="modal-close" onclick="closeOv('ov-review')" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
