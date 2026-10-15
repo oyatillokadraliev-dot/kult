@@ -1396,7 +1396,6 @@ async function confirmGuest() {
       source: 'guest',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
-
     closeOv('ov-guest');
     toast('Гость добавлен');
     await renderTC();
