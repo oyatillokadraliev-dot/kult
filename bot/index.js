@@ -85,6 +85,17 @@ async function getTrainerSchedule(trainer){
    ПОСТОЯННЫЕ КЛИЕНТЫ (recurringAssignments)
    ═══════════════════════════════════════════════════════════ */
 
+/*
+   МОДЕЛЬ (актуальная): постоянному клиенту заранее генерируются обычные документы
+   в bookings на RECURRING_WEEKS_AHEAD недель вперёд (status: 'upcoming', source: 'recurring',
+   recurringId: <id прикрепления>) — это делает сайт (app.js/admin.html). Здесь, в боте, мы
+   эти записи только читаем и дополняем ("доливаем") на случай, если ни сайт, ни админка
+   давно не открывались, а также отмечаем посещение — списание sessionsLeft происходит
+   именно в момент отметки тренером (как для обычных записей, так и для постоянных).
+*/
+const RECURRING_WEEKS_AHEAD=8;
+const DAY_MAP_RC={'Пн':1,'Вт':2,'Ср':3,'Чт':4,'Пт':5,'Сб':6,'Вс':0};
+
 async function getRecurringForTrainer(trainerName){
   const snap=await db.collection('recurringAssignments').where('trainerName','==',trainerName).get();
   return snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.active!==false);
@@ -99,55 +110,82 @@ function endOfToday(d){
   return new Date(startOfToday(d).getTime()+86400000);
 }
 
-/* booking постоянного клиента на СЕГОДНЯ, если уже создан (чтобы не дать отметить дважды) */
-async function getTodayBookingForRecurring(recurringId){
-  const snap=await db.collection('bookings').where('recurringId','==',recurringId).get();
-  const s=startOfToday(new Date()), e=endOfToday(new Date());
-  const todays=snap.docs
-    .map(d=>({id:d.id,...d.data()}))
-    .filter(b=>b.trainingDate&&new Date(b.trainingDate)>=s&&new Date(b.trainingDate)<e);
-  return todays[0]||null;
+function upcomingDatesForDaysRC(daysStr,timeStr,fromDate,weeksAhead){
+  const targetDows=(daysStr||'').split(',').map(s=>DAY_MAP_RC[s.trim()]).filter(x=>x!==undefined);
+  if(!targetDows.length)return [];
+  const [hh,mm]=(timeStr||'00:00').split(':').map(Number);
+  const dates=[];
+  const horizonDays=weeksAhead*7+7;
+  for(let i=0;i<horizonDays;i++){
+    const cand=new Date(fromDate);
+    cand.setDate(cand.getDate()+i);
+    cand.setHours(hh,mm,0,0);
+    if(targetDows.includes(cand.getDay())&&cand>=fromDate)dates.push(cand);
+  }
+  return dates;
 }
 
-/* Создаёт (или обновляет) отметку посещения постоянного клиента на сегодня,
-   списывая занятие по абонементу в момент отметки — как и на сайте. */
-async function markRecurringAttendance(recurring,status){
-  const existing=await getTodayBookingForRecurring(recurring.id);
-  if(existing){
-    await db.collection('bookings').doc(existing.id).set({status},{merge:true});
-    return existing.id;
-  }
+/* Доливает недостающие bookings вперёд для одного recurring-прикрепления. */
+async function generateRecurringBookings(recurring){
+  const existingSnap=await db.collection('bookings').where('recurringId','==',recurring.id).get();
+  const existingDates=new Set(existingSnap.docs.map(d=>d.data().trainingDate).filter(Boolean));
 
   const now=new Date();
-  const bookingData={
-    name:recurring.slotName,
-    trainer:recurring.trainerName,
-    time:recurring.time,
-    days:recurring.daysLabel||'',
-    phone:recurring.phone,
-    userName:recurring.userName,
-    trainerKey:null,
-    status,
-    trainingDate:now.toISOString(),
-    recurringId:recurring.id,
-    source:'recurring',
-  };
+  const candidateDates=upcomingDatesForDaysRC(recurring.daysLabel,recurring.time,now,RECURRING_WEEKS_AHEAD);
 
-  const userRef=db.collection('users').doc(recurring.phone);
-  const bookRef=db.collection('bookings').doc();
+  for(const dt of candidateDates){
+    const iso=dt.toISOString();
+    if(existingDates.has(iso))continue;
+    await db.collection('bookings').add({
+      name:recurring.slotName,
+      trainer:recurring.trainerName,
+      time:recurring.time,
+      days:recurring.daysLabel||'',
+      phone:recurring.phone,
+      userName:recurring.userName,
+      trainerKey:null,
+      status:'upcoming',
+      trainingDate:iso,
+      recurringId:recurring.id,
+      source:'recurring',
+      createdAt:admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
 
+/* Доливает вперёд ВСЕ активные прикрепления тренера — вызывается лениво при каждом
+   открытии им своих тренировок в боте, чтобы окно сгенерированных дат не иссякало. */
+async function ensureRecurringBookingsFilled(trainerName){
+  const recurring=await getRecurringForTrainer(trainerName);
+  for(const r of recurring){
+    try{ await generateRecurringBookings(r); }
+    catch(e){ console.error('Не удалось доливку recurring-записей для',r.id,e.message); }
+  }
+}
+
+/* Отмечает посещение (разовой ИЛИ постоянной записи — технически одинаковые документы).
+   Списание sessionsLeft происходит ТОЛЬКО для постоянных клиентов (source: 'recurring')
+   и только один раз — для обычных записей списание уже произошло в момент записи на сайте. */
+async function markAttendanceWithSessionCharge(bookingId,status){
+  const bookRef=db.collection('bookings').doc(bookingId);
   await db.runTransaction(async(tx)=>{
-    const userSnap=await tx.get(userRef);
-    tx.set(bookRef,{...bookingData,createdAt:admin.firestore.FieldValue.serverTimestamp()});
-    if(userSnap.exists){
-      const currentLeft=userSnap.data().sessionsLeft;
-      if(currentLeft!==null&&currentLeft!==undefined){
-        tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
+    const bookSnap=await tx.get(bookRef);
+    if(!bookSnap.exists)throw new Error('booking_not_found');
+    const booking=bookSnap.data();
+
+    tx.update(bookRef,{status});
+
+    if(booking.source==='recurring'&&booking.status==='upcoming'&&booking.phone){
+      const userRef=db.collection('users').doc(booking.phone);
+      const userSnap=await tx.get(userRef);
+      if(userSnap.exists){
+        const currentLeft=userSnap.data().sessionsLeft;
+        if(currentLeft!==null&&currentLeft!==undefined){
+          tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
+        }
       }
     }
   });
-
-  return bookRef.id;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -203,6 +241,9 @@ async function showTrainerSchedule(chatId,trainer,msgId){
   await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nВыбери занятие, чтобы увидеть, кто записан:',{reply_markup:{inline_keyboard:buttons}});
 }
 
+/* Все клиенты слота — и разовые, и постоянные — теперь лежат в bookings одинаково
+   (различаются только полем source). Записи без trainingDate (старый мусор/баг с
+   пустыми днями) сюда никогда не попадут — такие записи тренер не увидит нигде. */
 async function getSlotClients(trainer,s){
   const snap=await db.collection('bookings')
     .where('trainer','==',trainer.name)
@@ -215,29 +256,22 @@ async function getSlotClients(trainer,s){
   return snap.docs
     .map(d=>({id:d.id,...d.data()}))
     .filter(c=>c.time===s.time)
-    .filter(c=>!c.trainingDate||new Date(c.trainingDate)>=startOfToday(now)) // прошедшие по дате убираем
+    .filter(c=>c.trainingDate&&new Date(c.trainingDate)>=startOfToday(now)) // без даты и прошедшие — не показываем
     .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
 }
 
-/* Постоянные клиенты, которые сегодня должны прийти на этот слот и ещё не отмечены сегодня */
-async function getRecurringSlotClients(trainer,s){
-  const todayAbbr=DAY_ABBR[new Date().getDay()];
-  if(!s.days||!s.days.split(',').map(x=>x.trim()).includes(todayAbbr))return [];
-
-  const all=await getRecurringForTrainer(trainer.name);
-  const matching=all.filter(r=>r.slotName===s.name&&r.time===s.time);
-  if(!matching.length)return [];
-
-  const now=new Date(),st=startOfToday(now),en=endOfToday(now);
-  // Исключаем тех, у кого на сегодня уже есть booking со статусом != upcoming (уже отмечены)
-  const snap=await db.collection('bookings').where('trainer','==',trainer.name).get();
-  const markedTodayRecIds=new Set(
-    snap.docs.map(d=>d.data())
-      .filter(b=>b.recurringId&&b.trainingDate&&new Date(b.trainingDate)>=st&&new Date(b.trainingDate)<en&&b.status!=='upcoming')
-      .map(b=>b.recurringId)
-  );
-
-  return matching.filter(r=>!markedTodayRecIds.has(r.id));
+/* Остатки абонемента для клиентов-подписчиков (чтобы показать "абонемент закончился"
+   только у постоянных клиентов — у разовых это не считаем, т.к. списание у них уже
+   произошло в момент записи на сайте). */
+async function withSessionsLeft(clients){
+  return Promise.all(clients.map(async(c)=>{
+    if(c.source!=='recurring')return c;
+    try{
+      const uSnap=await db.collection('users').doc(c.phone).get();
+      const left=uSnap.exists?uSnap.data().sessionsLeft:undefined;
+      return {...c,sessionsLeft:left};
+    }catch(e){return c;}
+  }));
 }
 
 async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
@@ -249,53 +283,30 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   const s=schedule[slotIndex];
   if(!s)return await edit(chatId,msgId,'Занятие не найдено. Открой список тренировок заново.',{reply_markup:backTrainerBtn});
 
-  const [clients,recurringClients]=await Promise.all([
-    getSlotClients(trainer,s),
-    getRecurringSlotClients(trainer,s),
-  ]);
+  // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера —
+  // так бот не зависит от того, открывал ли кто-то сайт в последнее время.
+  await ensureRecurringBookingsFilled(trainer.name);
 
-  // Подтягиваем остатки абонемента постоянных клиентов, чтобы показать предупреждение
-  const recWithLeft=await Promise.all(recurringClients.map(async(r)=>{
-    try{
-      const uSnap=await db.collection('users').doc(r.phone).get();
-      const left=uSnap.exists?uSnap.data().sessionsLeft:undefined;
-      return {...r,sessionsLeft:left};
-    }catch(e){return {...r,sessionsLeft:undefined};}
-  }));
-
-  const totalCount=clients.length+recWithLeft.length;
+  const clientsRaw=await getSlotClients(trainer,s);
+  const clients=await withSessionsLeft(clientsRaw);
 
   let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · ${s.days||''}\n\n`;
   const rows=[];
 
-  if(!totalCount){
+  if(!clients.length){
     text+='👥 Записалось: <b>0 человек</b>\n\nПока никто не записан на это занятие.';
   }else{
-    text+=`👥 Всего: <b>${totalCount} ${pluralPeople(totalCount)}</b>\n\nОтметь посещаемость:\n`;
-
-    if(recWithLeft.length){
-      text+='\n<b>🔁 Постоянные клиенты:</b>\n';
-      recWithLeft.forEach((r,i)=>{
-        const noSessions=(r.sessionsLeft!==null&&r.sessionsLeft!==undefined&&r.sessionsLeft<=0);
-        text+=`\n${i+1}. <b>${r.userName||'—'}</b>${noSessions?' · <i>абонемент закончился</i>':''}\n   📱 +${r.phone||''}`;
-        rows.push([
-          {text:`✅ ${(r.userName||'—').split(' ')[0]} пришла`,callback_data:`t_rmark:${r.id}:attended:${slotIndex}`},
-          {text:'❌ Не пришла',callback_data:`t_rmark:${r.id}:missed:${slotIndex}`},
-        ]);
-      });
-    }
-
-    if(clients.length){
-      text+='\n\n<b>🆕 Разовые записи:</b>\n';
-      clients.forEach((c,i)=>{
-        const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
-        text+=`\n${i+1}. <b>${c.userName||'—'}</b>${dayLabel?` · <i>${dayLabel}</i>`:''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
-        rows.push([
-          {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
-          {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
-        ]);
-      });
-    }
+    text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
+    clients.forEach((c,i)=>{
+      const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
+      const isRecurring=c.source==='recurring';
+      const noSessions=isRecurring&&c.sessionsLeft!==null&&c.sessionsLeft!==undefined&&c.sessionsLeft<=0;
+      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${isRecurring?' · <i>постоянный</i>':''}${dayLabel?` · ${dayLabel}`:''}${noSessions?' · <i>абонемент закончился</i>':''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
+      rows.push([
+        {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
+        {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
+      ]);
+    });
   }
 
   rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
@@ -423,23 +434,11 @@ async function handleCb(cb){
     }
     if(data.startsWith('t_mark:')){
       const[,bookingId,status,slotIndex]=data.split(':');
-      await db.collection('bookings').doc(bookingId).set({status},{merge:true});
-      await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
-      return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
-    }
-    if(data.startsWith('t_rmark:')){
-      const[,recurringId,status,slotIndex]=data.split(':');
       try{
-        const rSnap=await db.collection('recurringAssignments').doc(recurringId).get();
-        if(!rSnap.exists){
-          await answer(cb.id,'Это прикрепление больше не существует',true);
-        }else{
-          const recurring={id:rSnap.id,...rSnap.data()};
-          await markRecurringAttendance(recurring,status);
-          await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
-        }
+        await markAttendanceWithSessionCharge(bookingId,status);
+        await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
       }catch(e){
-        console.error('Ошибка отметки постоянного клиента:',e.message);
+        console.error('Ошибка отметки посещения:',e.message);
         await answer(cb.id,'Не удалось сохранить отметку',true);
       }
       return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
@@ -657,17 +656,18 @@ cron.schedule('0 8 * * *',async()=>{
 
       if(!todaySlots.length)continue;
 
+      // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера,
+      // чтобы сводка не показывала "0 человек" там, где клиент на самом деле есть.
+      await ensureRecurringBookingsFilled(trainer.name);
+
       let text=`☀️ <b>Доброе утро, ${(trainer.name||'').split(' ')[0]||'тренер'}!</b>\n\nВот твои тренировки на сегодня:\n\n`;
 
       for(const s of todaySlots){
-        const [clients,recurringClients]=await Promise.all([
-          getSlotClients(trainer,s),
-          getRecurringSlotClients(trainer,s),
-        ]);
-        const totalCount=clients.length+recurringClients.length;
+        const clients=await getSlotClients(trainer,s);
+        const recurringCount=clients.filter(c=>c.source==='recurring').length;
         text+=`🏋️‍♀️ <b>${s.time} · ${s.name}</b>\n`;
-        text+=totalCount
-          ?`   👥 Записалось: <b>${totalCount} ${pluralPeople(totalCount)}</b>${recurringClients.length?` (из них постоянных: ${recurringClients.length})`:''}\n`
+        text+=clients.length
+          ?`   👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>${recurringCount?` (из них постоянных: ${recurringCount})`:''}\n`
           :`   👥 Записалось: <b>0 человек</b>\n`;
       }
 
