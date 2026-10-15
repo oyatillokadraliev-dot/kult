@@ -266,7 +266,22 @@ async function dbAddReview(data) {
 }
 
 /* ── FIRESTORE: ПОСТОЯННЫЕ КЛИЕНТЫ (recurringAssignments) ──── */
-/* Документ: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, active, createdAt } */
+/* Документ recurringAssignments: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, active, createdAt } */
+/*
+   МОДЕЛЬ (обновлено): постоянному клиенту заранее генерируются обычные документы
+   в bookings на RECURRING_WEEKS_AHEAD недель вперёд, со status: 'upcoming' и
+   source: 'recurring' + recurringId: <id родительского прикрепления>. Благодаря этому:
+   - клиент видит свои постоянные тренировки в личном кабинете как обычные записи
+     и может отменить конкретную дату (не всё прикрепление целиком);
+   - тренер видит слот и клиента в нём даже до отметки посещения;
+   - списание sessionsLeft происходит НЕ в момент создания этих записей, а только
+     когда тренер отмечает «пришла/не пришла» (markAttendance просто обновляет
+     существующий booking — для recurring-записей это та же функция, что и для разовых).
+   Генерация вперёд выполняется: (а) сразу при создании прикрепления в админке,
+   (б) автоматически "доливается" при каждом заходе тренера в свой кабинет
+   (ensureRecurringBookingsFilled), чтобы окно не иссякало без участия админа.
+*/
+const RECURRING_WEEKS_AHEAD = 8; // на сколько недель вперёд держим сгенерированные bookings
 
 async function dbGetRecurringForTrainer(trainerName) {
   const d = await getDB();
@@ -275,60 +290,76 @@ async function dbGetRecurringForTrainer(trainerName) {
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((r) => r.active !== false);
 }
 
-/* Возвращает booking сегодняшнего дня для данного постоянного прикрепления, если он уже есть
-   (чтобы не дать тренеру отметить посещение дважды за один день) */
-async function dbGetTodayBookingForRecurring(recurringId) {
-  const d = await getDB();
-  const q = fb().query(fb().collection(d, 'bookings'), fb().where('recurringId', '==', recurringId));
-  const snap = await fb().getDocs(q);
-  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-  const endToday = new Date(startToday.getTime() + 86400000);
-  const todays = snap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((b) => b.trainingDate && new Date(b.trainingDate) >= startToday && new Date(b.trainingDate) < endToday);
-  return todays[0] || null;
+/* Возвращает список дат (ISO) на RECURRING_WEEKS_AHEAD недель вперёд для заданных
+   дней недели (daysLabel вида "Пн, Ср, Пт") и времени, начиная от fromDate (не включая прошлое). */
+function upcomingDatesForDays(daysStr, timeStr, fromDate, weeksAhead) {
+  const targetDows = (daysStr || '').split(',').map((s) => DAY_MAP[s.trim()]).filter((x) => x !== undefined);
+  if (!targetDows.length) return [];
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
+  const dates = [];
+  const horizonDays = weeksAhead * 7 + 7;
+  for (let i = 0; i < horizonDays; i++) {
+    const cand = new Date(fromDate);
+    cand.setDate(cand.getDate() + i);
+    cand.setHours(hh, mm, 0, 0);
+    if (targetDows.includes(cand.getDay()) && cand >= fromDate) dates.push(cand);
+  }
+  return dates;
 }
 
-/* Отмечает посещение постоянного клиента на сегодня: создаёт booking (если его ещё нет)
-   и списывает занятие по абонементу в момент отметки. */
-async function dbMarkRecurringAttendance(recurring, status) {
+/* Создаёт для одного recurring-прикрепления недостающие bookings вперёд
+   (не трогая уже существующие — определяем "уже есть" по recurringId + trainingDate). */
+async function dbGenerateRecurringBookings(recurring) {
   const d = await getDB();
-  const existing = await dbGetTodayBookingForRecurring(recurring.id);
-  if (existing) {
-    await dbUpdateBookingStatus(existing.id, status);
-    return existing.id;
-  }
+  const existingSnap = await fb().getDocs(
+    fb().query(fb().collection(d, 'bookings'), fb().where('recurringId', '==', recurring.id))
+  );
+  const existingDates = new Set(
+    existingSnap.docs.map((doc) => doc.data().trainingDate).filter(Boolean)
+  );
 
   const now = new Date();
-  const bookingData = {
-    name: recurring.slotName,
-    trainer: recurring.trainerName,
-    time: recurring.time,
-    days: recurring.daysLabel || '',
-    phone: recurring.phone,
-    userName: recurring.userName,
-    trainerKey: null,
-    status,
-    trainingDate: now.toISOString(),
-    recurringId: recurring.id,
-    source: 'recurring',
-  };
+  const candidateDates = upcomingDatesForDays(recurring.daysLabel, recurring.time, now, RECURRING_WEEKS_AHEAD);
 
-  const userRef = d.collection('users').doc(recurring.phone);
-  const bookRef = d.collection('bookings').doc();
+  let created = 0;
+  for (const dt of candidateDates) {
+    const iso = dt.toISOString();
+    if (existingDates.has(iso)) continue;
+    await d.collection('bookings').add({
+      name: recurring.slotName,
+      trainer: recurring.trainerName,
+      time: recurring.time,
+      days: recurring.daysLabel || '',
+      phone: recurring.phone,
+      userName: recurring.userName,
+      trainerKey: null,
+      status: 'upcoming',
+      trainingDate: iso,
+      recurringId: recurring.id,
+      source: 'recurring',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    created++;
+  }
+  return created;
+}
 
-  await d.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    tx.set(bookRef, { ...bookingData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    if (userSnap.exists) {
-      const currentLeft = userSnap.data().sessionsLeft;
-      if (currentLeft !== null && currentLeft !== undefined) {
-        tx.update(userRef, { sessionsLeft: Math.max(0, currentLeft - 1) });
-      }
-    }
-  });
+/* Подтягивает (создаёт недостающие) bookings вперёд для ВСЕХ активных прикреплений
+   данного тренера. Вызывается лениво при каждом открытии кабинета тренера, так что
+   окно никогда не "кончается", даже если никто не открывал админку. */
+async function ensureRecurringBookingsFilled(recurring) {
+  for (const r of recurring) {
+    try { await dbGenerateRecurringBookings(r); }
+    catch (e) { console.error('Не удалось сгенерировать recurring-записи для', r.id, e); }
+  }
+}
 
-  return bookRef.id;
+/* Отмена ОДНОЙ даты постоянной тренировки клиентом из личного кабинета.
+   В отличие от cancelBook() для обычной записи — НЕ возвращает занятие на sessionsLeft,
+   потому что оно ещё не было списано (списание происходит только по факту отметки тренером). */
+async function dbCancelRecurringBooking(bookingId) {
+  const d = await getDB();
+  await d.collection('bookings').doc(bookingId).set({ status: 'cancelled_by_client' }, { merge: true });
 }
 
 /* ── INIT ────────────────────────────────────────── */
@@ -611,7 +642,35 @@ async function openTrainerPage(key) {
     .map((p) => `<p style="margin-bottom:16px">${p}</p>`)
     .join('');
 
-document.getElementById('tp-sched').innerHTML = (t.schedule || []).map((s) => `
+// ВАЖНО: берём расписание тренера из актуальной коллекции `schedule`
+// (то же самое, что рисуется на вкладке "Расписание" и редактируется в админке),
+// а НЕ из устаревшего поля trainer.schedule, которое не поддерживается в актуальной
+// версии сайта и может быть пустым/рассинхронизированным — именно это было причиной
+// того, что "дни" терялись (days: "") и дата тренировки не вычислялась (trainingDate: null).
+const trainerSlots = [];
+DAY_KEYS.forEach((dayKey) => {
+  (SCHEDULE[dayKey] || []).forEach((s) => {
+    if (s.trainer !== t.name) return;
+    trainerSlots.push({ ...s, dayKey });
+  });
+});
+// Группируем одинаковые тренировки (одно и то же время+название), объединяя дни в одну строку,
+// чтобы не показывать Пн/Ср/Пт тремя отдельными одинаковыми строками.
+const slotGroups = {};
+trainerSlots.forEach((s) => {
+  const gKey = `${s.time}|${s.name}`;
+  if (!slotGroups[gKey]) slotGroups[gKey] = { time: s.time, name: s.name, dayKeys: [] };
+  slotGroups[gKey].dayKeys.push(s.dayKey);
+});
+const trainerSchedule = Object.values(slotGroups)
+  .map((g) => ({
+    time: g.time,
+    name: g.name,
+    days: g.dayKeys.map((dk) => DAY_KEY_TO_LABEL[dk]).join(', '),
+  }))
+  .sort((a, b) => a.time.localeCompare(b.time));
+
+document.getElementById('tp-sched').innerHTML = trainerSchedule.map((s) => `
   <div class="tsched-item">
     <span class="tsched-time">${esc(s.time)}</span>
     <span class="tsched-name">${esc(s.name)}</span>
@@ -700,23 +759,42 @@ function openBookingModal(name, trainer, time, days) {
   openOv('ov-booking');
 }
 
+let bookInFlight = false; // защита от двойного/тройного клика по "Подтвердить запись"
+
 async function confirmBook() {
-  if (!pendingBook) return;
-  if (!user) { toast('Войдите, чтобы записаться'); return; }
+  // ПЕРВАЯ строка функции — синхронная проверка-и-установка флага, ДО любых await
+  // и ДО setBtn(). Это исключает ситуацию, когда два быстрых клика успевают оба пройти
+  // проверки до того, как кнопка реально задизейблится (именно так ранее создавались
+  // дубликаты записей на одну и ту же тренировку).
+  if (bookInFlight) return;
+  bookInFlight = true;
+
+  if (!pendingBook) { bookInFlight = false; return; }
+  if (!user) { toast('Войдите, чтобы записаться'); bookInFlight = false; return; }
 
   if (!user.abonement) {
     toast('Сначала выберите абонемент в личном кабинете');
+    bookInFlight = false;
     return;
   }
 
   const left = user.sessionsLeft;
   if (left !== null && left !== undefined && left <= 0) {
     toast('Занятия по абонементу закончились. Обратитесь к администратору.');
+    bookInFlight = false;
     return;
   }
 
   // nextDate вычисляем один раз здесь — она нужна и для bookingData, и для toast ниже
   const nextDate = nextDateForDays(pendingBook.days, pendingBook.time);
+  if (!nextDate) {
+    // Если дата не вычислилась (например, дни расписания не распознаны) — лучше
+    // прервать запись и показать понятную ошибку, чем создавать "битую" бронь без даты,
+    // которую тренер потом не увидит в своём кабинете.
+    toast('Не удалось определить дату тренировки. Обратитесь к администратору.');
+    bookInFlight = false;
+    return;
+  }
 
   const trainerKey = Object.keys(TRAINERS_FROM_DB).find(
     (k) => TRAINERS_FROM_DB[k].name === pendingBook.trainer
@@ -746,6 +824,21 @@ async function confirmBook() {
         throw new Error('no_sessions');
       }
 
+      // Серверная защита от дублей: если на этот же слот (телефон+название+время+дата)
+      // уже есть активная ("upcoming") запись — не создаём вторую. Это подстраховка
+      // на случай двух вкладок/устройств или сетевых ретраев, не зависящая от UI-флага выше.
+      const dupQuery = await tx.get(
+        fb().query(
+          fb().collection(db, 'bookings'),
+          fb().where('phone', '==', user.phone),
+          fb().where('name', '==', bookingData.name),
+          fb().where('time', '==', bookingData.time),
+          fb().where('trainingDate', '==', bookingData.trainingDate),
+          fb().where('status', '==', 'upcoming')
+        )
+      );
+      if (!dupQuery.empty) throw new Error('duplicate_booking');
+
       tx.set(bookRef, { ...bookingData, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
 
       if (currentLeft !== null && currentLeft !== undefined) {
@@ -766,6 +859,7 @@ async function confirmBook() {
     const msg = {
       no_user: 'Пользователь не найден',
       no_sessions: 'Занятия по абонементу закончились. Обратитесь к администратору.',
+      duplicate_booking: 'Вы уже записаны на эту тренировку',
     }[e.message];
     if (msg) toast(msg);
     else {
@@ -775,6 +869,7 @@ async function confirmBook() {
   } finally {
     setBtn('btn-confirm-book', 'Подтвердить запись', false);
     pendingBook = null;
+    bookInFlight = false;
   }
 }
 
@@ -964,9 +1059,11 @@ if (hasAb) {
   list.innerHTML = sorted.length
     ? sorted.map((b) => {
         const status = b.status || 'upcoming';
+        const isRecurring = b.source === 'recurring';
         const badge  =
           status === 'attended' ? '<span class="lk-status-badge lk-status-attended">Посещено</span>' :
           status === 'missed'   ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>'   :
+          status === 'cancelled_by_client' ? '<span class="lk-status-badge lk-status-missed">Отменено</span>' :
           '<span class="lk-status-badge lk-status-upcoming">Предстоит</span>';
         const label = Object.values(TRAININGS).find((x) => x.name === b.name)?.name || b.name;
         return `
@@ -978,18 +1075,36 @@ if (hasAb) {
               : ''}
           </div>
           <div>
-            <div class="lk-booking-name">${esc(label)}</div>
+            <div class="lk-booking-name">${esc(label)}${isRecurring ? ' <span style="font-size:11px;color:var(--gold,#C9A96E);font-weight:600">· постоянная</span>' : ''}</div>
             <div class="lk-booking-trainer">${esc(b.trainer)}${b.days ? ' · ' + esc(b.days) : ''}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             ${badge}
             ${status === 'upcoming'
-              ? `<button class="lk-cancel-btn" onclick="cancelBook('${esc(b.id)}')">Отменить</button>`
+              ? (isRecurring
+                  ? `<button class="lk-cancel-btn" onclick="cancelRecurringOccurrence('${esc(b.id)}')">Не смогу прийти</button>`
+                  : `<button class="lk-cancel-btn" onclick="cancelBook('${esc(b.id)}')">Отменить</button>`)
               : ''}
           </div>
         </div>`;
       }).join('')
     : '<div class="lk-empty-state">Вы ещё не записаны ни на одну тренировку.<br>Перейдите в расписание и выберите занятие.</div>';
+}
+
+/* Клиент отменяет ОДНУ дату своей постоянной тренировки (сама постоянная привязка
+   к слоту остаётся — отменяется только этот конкретный день). Занятие НЕ возвращается
+   на sessionsLeft, т.к. оно ещё не было списано (спишется только если бы тренер её отметил). */
+async function cancelRecurringOccurrence(id) {
+  if (!id || !confirm('Отменить эту тренировку? Постоянная запись на остальные дни сохранится.')) return;
+  try {
+    await dbCancelRecurringBooking(id);
+    bookings = bookings.map((b) => (b.id === id ? { ...b, status: 'cancelled_by_client' } : b));
+    renderLK();
+    toast('Эта тренировка отменена');
+  } catch (e) {
+    console.error(e);
+    toast('Не удалось отменить тренировку');
+  }
 }
 
 function renderAbSelectHTML(selectedId) {
@@ -1084,65 +1199,55 @@ async function renderTC() {
   const list = document.getElementById('tc-list');
   list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
 
-  const [allRaw, recurring] = await Promise.all([
-    dbGetTrainerBookings(user.trainerKey, trainer.name),
-    dbGetRecurringForTrainer(trainer.name),
-  ]);
+  const recurring = await dbGetRecurringForTrainer(trainer.name);
+  // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера —
+  // так окно сгенерированных записей никогда не кончается само по себе.
+  await ensureRecurringBookingsFilled(recurring);
+
+  const allRaw = await dbGetTrainerBookings(user.trainerKey, trainer.name);
 
   // Тренер видит только будущие и не отмеченные (status upcoming) записи.
   // Записи без даты (старый мусор) тоже скрываем, чтобы не путать.
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
-  const endToday = new Date(startToday.getTime() + 86400000);
 
   const all = allRaw.filter((b) => {
-    if (b.status !== 'upcoming') return false;       // уже отмеченные скрываем
+    if (b.status !== 'upcoming') return false;       // уже отмеченные/отменённые скрываем
     if (!b.trainingDate) return false;                // без даты — не показываем (см. патч 1)
     return new Date(b.trainingDate) >= startToday;    // прошедшие даты скрываем
   });
 
   all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
-  // Группируем "разовые" записи по времени, названию И дню недели — чтобы Пн/Ср/Пт не схлопывались в одну строку
+  // ВСЕ записи (разовые и постоянные) теперь лежат в bookings одинаково,
+  // поэтому группируем их общим проходом по времени, названию И дню недели.
   const groups = {};
   all.forEach((b) => {
     const dayLabel = fmtWeekday(b.trainingDate);
     const key = `${b.time}|${b.name}|${dayLabel}`;
-    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: dayLabel, clients: [], recurringClients: [] };
+    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: dayLabel, clients: [] };
     groups[key].clients.push(b);
   });
 
-  // Постоянные клиенты: показываем на сегодня, в каждой группе слота ТОЛЬКО если сегодня —
-  // день этого слота. Также создаём группу, если у слота пока нет ни одной "разовой" записи сегодня.
+  // Пункт "тренер должен видеть тренировку даже если никто не записан": строим список
+  // ВСЕХ слотов этого тренера из общего расписания (SCHEDULE), ограниченный сегодняшним
+  // днём, и создаём для них пустую группу, если туда ещё не попал ни один клиент.
+  const todayDayKey = DAY_KEYS[(startToday.getDay() + 6) % 7]; // getDay(): Вс=0..Сб=6 → DAY_KEYS: mon..sat
   const todayAbbr = DAY_ABBR_RU[startToday.getDay()];
-  // Проверяем уже отмеченные сегодня recurring-booking'и, чтобы скрыть кнопки повторно
-  const markedTodayRecIds = new Set(
-    allRaw
-      .filter((b) => b.recurringId && b.trainingDate && new Date(b.trainingDate) >= startToday && new Date(b.trainingDate) < endToday && b.status !== 'upcoming')
-      .map((b) => b.recurringId)
-  );
-
-  for (const r of recurring) {
-    const slotDays = (r.daysLabel || '').split(',').map((x) => x.trim());
-    if (!slotDays.includes(todayAbbr)) continue; // сегодня у этого слота нет тренировки
-    if (markedTodayRecIds.has(r.id)) continue;   // уже отметили сегодня — не показываем повторно
-
-    const dayLabel = todayAbbr;
-    const key = `${r.time}|${r.slotName}|${dayLabel}`;
-    if (!groups[key]) groups[key] = { time: r.time, name: r.slotName, days: dayLabel, clients: [], recurringClients: [] };
-    groups[key].recurringClients.push(r);
-  }
+  (SCHEDULE[todayDayKey] || []).forEach((s) => {
+    if (s.trainer !== trainer.name) return;
+    const key = `${s.time}|${s.name}|${todayAbbr}`;
+    if (!groups[key]) groups[key] = { time: s.time, name: s.name, days: todayAbbr, clients: [] };
+  });
 
   const items = Object.values(groups).sort((a, b) => String(a.time).localeCompare(String(b.time)));
 
-  // Подгружаем данные клиентов постоянных прикреплений (для проверки "абонемент закончился")
-  const recPhones = [...new Set(recurring.map((r) => r.phone).filter(Boolean))];
+  // Подгружаем данные клиентов (для проверки "абонемент закончился" у постоянных клиентов)
+  const recPhones = [...new Set(all.filter((b) => b.source === 'recurring').map((b) => b.phone).filter(Boolean))];
   if (recPhones.length) await ensureClientLookup(recPhones);
 
   list.innerHTML = items.length
-    ? items.map((s, i) => {
-        const totalCount = s.clients.length + s.recurringClients.length;
-        return `
+    ? items.map((s, i) => `
       <div class="tc-group">
         <div class="tc-group-header" onclick="toggleTC(${i})">
           <span class="tc-group-time">${esc(s.time)}</span>
@@ -1150,37 +1255,21 @@ async function renderTC() {
             <div class="tc-group-name">${esc(s.name)}</div>
             <div class="tc-group-days">${esc(s.days || '')}</div>
           </div>
-          <span class="tc-group-count">${totalCount} ${totalCount===1?'клиент':'клиентов'}</span>
+          <span class="tc-group-count">${s.clients.length} ${s.clients.length===1?'клиент':'клиентов'}</span>
         </div>
         <div class="tc-clients-list" id="tc-cl-${i}">
-          ${s.recurringClients.map((r) => {
+          ${s.clients.length ? s.clients.map((c) => {
+            const isRecurring = c.source === 'recurring';
             const noSessionsLeft = (() => {
-              const u = clientLookupCache[r.phone];
+              if (!isRecurring) return false;
+              const u = clientLookupCache[c.phone];
               return u && u.sessionsLeft !== null && u.sessionsLeft !== undefined && u.sessionsLeft <= 0;
             })();
             return `
-            <div class="tc-client-row-full" data-recurring-id="${esc(r.id)}">
-              <div class="tc-client-info">
-                <div class="tc-client-name">${esc(r.userName || '—')} <span style="font-size:11px;color:var(--gold,#C9A96E);font-weight:600">· ПОСТОЯННЫЙ</span></div>
-                <div class="tc-client-meta">+${esc(r.phone || '')}${noSessionsLeft ? ' · <span style="color:var(--red,#dc2626)">абонемент закончился</span>' : ''}</div>
-              </div>
-              <div class="tc-attend-buttons">
-                <button class="tc-attend-btn tc-attend-yes" onclick="markRecurringAttendance('${esc(r.id)}','attended',this)" title="Пришла">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                </button>
-                <button class="tc-attend-btn tc-attend-no" onclick="markRecurringAttendance('${esc(r.id)}','missed',this)" title="Не пришла">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-            </div>`;
-          }).join('')}
-          ${s.clients.map((c) => `
             <div class="tc-client-row-full" data-booking-id="${esc(c.id)}">
               <div class="tc-client-info">
-                <div class="tc-client-name">${esc(c.userName || '—')}</div>
-                <div class="tc-client-meta">+${esc(c.phone || '')}${c.trainingDate ? ' · ' + esc(formatDateShort(c.trainingDate)) : ''}</div>
+                <div class="tc-client-name">${esc(c.userName || '—')}${isRecurring ? ' <span style="font-size:11px;color:var(--gold,#C9A96E);font-weight:600">· ПОСТОЯННЫЙ</span>' : ''}</div>
+                <div class="tc-client-meta">+${esc(c.phone || '')}${c.trainingDate ? ' · ' + esc(formatDateShort(c.trainingDate)) : ''}${noSessionsLeft ? ' · <span style="color:var(--red,#dc2626)">абонемент закончился</span>' : ''}</div>
               </div>
               <div class="tc-attend-buttons">
                 <button class="tc-attend-btn tc-attend-yes${c.status === 'attended' ? ' active' : ''}"
@@ -1194,11 +1283,12 @@ async function renderTC() {
                   </svg>
                 </button>
               </div>
-            </div>`).join('')}
+            </div>`;
+          }).join('') : '<div class="lk-empty-state" style="padding:14px">На это занятие пока никто не записан</div>'}
         </div>
-      </div>`;
-      }).join('')
-    : '<div class="lk-empty-state">Актуальных записей нет</div>';
+        <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.days)})">+ Гость (разовый визит без записи)</button>
+      </div>`).join('')
+    : '<div class="lk-empty-state">На сегодня в расписании нет тренировок</div>';
 }
 function toggleTC(i) {
   document.getElementById('tc-cl-' + i)?.classList.toggle('open');
@@ -1219,9 +1309,36 @@ async function ensureClientLookup(phones) {
   }));
 }
 
+/* Отмечает посещение (разовой ИЛИ постоянной записи — они теперь одинаковые документы).
+   Списание sessionsLeft происходит ЗДЕСЬ и только здесь для постоянных клиентов
+   (source: 'recurring'); для обычных записей списание уже произошло при confirmBook(),
+   поэтому второй раз не списываем. */
 async function markAttendance(bookingId, status, btn) {
   try {
-    await dbUpdateBookingStatus(bookingId, status);
+    const d = await getDB();
+    const bookRef = d.collection('bookings').doc(bookingId);
+
+    await d.runTransaction(async (tx) => {
+      const bookSnap = await tx.get(bookRef);
+      if (!bookSnap.exists) throw new Error('booking_not_found');
+      const booking = bookSnap.data();
+
+      tx.update(bookRef, { status });
+
+      // Списываем занятие только для постоянных клиентов и только если это ещё не было
+      // сделано раньше (defensive: если вдруг запись уже не 'upcoming', не списываем повторно).
+      if (booking.source === 'recurring' && booking.status === 'upcoming' && booking.phone) {
+        const userRef = d.collection('users').doc(booking.phone);
+        const userSnap = await tx.get(userRef);
+        if (userSnap.exists) {
+          const currentLeft = userSnap.data().sessionsLeft;
+          if (currentLeft !== null && currentLeft !== undefined) {
+            tx.update(userRef, { sessionsLeft: Math.max(0, currentLeft - 1) });
+          }
+        }
+      }
+    });
+
     const row = btn.closest('.tc-client-row-full');
     row.querySelectorAll('.tc-attend-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
@@ -1232,22 +1349,62 @@ async function markAttendance(bookingId, status, btn) {
   }
 }
 
-/* Отметка посещения для ПОСТОЯННОГО клиента: создаёт booking на сегодня (если его ещё нет)
-   и списывает занятие по абонементу прямо сейчас. */
-async function markRecurringAttendance(recurringId, status, btn) {
-  try {
-    // находим recurring-объект в только что отрисованном списке через DOM недостаточно —
-    // проще заново запросить его по id
-    const d = await getDB();
-    const snap = await fb().getDoc(fb().doc(d, 'recurringAssignments', recurringId));
-    if (!snap.exists) { toast('Это прикрепление больше не существует'); return; }
-    const recurring = { id: snap.id, ...snap.data() };
+/* ── ГОСТЬ: разовая фиксация клиента, который пришёл без записи на сайте ───── */
+let pendingGuest = null;
+function openGuestModal(slotName, trainerName, time, daysLabel) {
+  pendingGuest = { slotName, trainerName, time, daysLabel };
+  document.getElementById('guest-name').value = '';
+  document.getElementById('guest-phone').value = '';
+  document.getElementById('guest-sub').textContent = `${slotName} · ${trainerName}${time ? ' · ' + time : ''}`;
+  openOv('ov-guest');
+}
 
-    await dbMarkRecurringAttendance(recurring, status);
-    toast(status === 'attended' ? 'Отмечено: пришла' : 'Отмечено: не пришла');
-    await renderTC(); // перерисовываем, т.к. этот клиент на сегодня больше не должен показываться с кнопками
+async function confirmGuest() {
+  if (!pendingGuest) return;
+  const name = document.getElementById('guest-name').value.trim();
+  const phoneRaw = document.getElementById('guest-phone').value.trim();
+
+  if (!name) { toast('Введите имя гостя'); return; }
+
+  setBtn('btn-confirm-guest', 'Добавляем...', true);
+  try {
+    const d = await getDB();
+    const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+
+    // Если указан телефон и такой клиент уже существует — используем его существующее имя
+    // (чтобы не плодить рассинхрон), иначе создаём лёгкую "гостевую" карточку клиента без абонемента.
+    if (phone && phone.length === 11) {
+      const existing = await dbGetUser(phone);
+      if (!existing) {
+        await dbSaveUser(phone, {
+          name, phone, isTrainer: false, abonement: null, sessionsLeft: null,
+          isGuest: true, createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    await d.collection('bookings').add({
+      name: pendingGuest.slotName,
+      trainer: pendingGuest.trainerName,
+      time: pendingGuest.time,
+      days: pendingGuest.daysLabel || '',
+      phone: phone || null,
+      userName: name,
+      trainerKey: null,
+      status: 'attended', // гостя тренер фиксирует по факту прихода, сразу "пришла"
+      trainingDate: new Date().toISOString(),
+      source: 'guest',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    closeOv('ov-guest');
+    toast('Гость добавлен');
+    await renderTC();
   } catch (e) {
     console.error(e);
-    toast('Не удалось сохранить отметку');
+    toast('Не удалось добавить гостя');
+  } finally {
+    setBtn('btn-confirm-guest', 'Добавить гостя', false);
+    pendingGuest = null;
   }
 }
