@@ -1020,6 +1020,17 @@ async function saveRecurring() {
   const slot = schedCache[slotId];
   if (!client || !slot) return toast('Не удалось найти выбранные данные, попробуйте снова');
 
+  // Прикрепление привязано к ТЕКУЩЕМУ остатку занятий по абонементу клиента: мы сразу
+  // генерируем ровно столько будущих тренировок, сколько у него sessionsLeft. Без абонемента
+  // или с sessionsLeft <= 0 прикреплять нельзя — админу нужно сначала выдать/продлить абонемент.
+  const sessionsLeft = client.sessionsLeft;
+  if (sessionsLeft === null || sessionsLeft === undefined) {
+    return toast('У клиента не задан счётчик занятий — сначала оформите ему абонемент с конкретным числом занятий');
+  }
+  if (sessionsLeft <= 0) {
+    return toast('У клиента закончились занятия по абонементу — сначала продлите абонемент');
+  }
+
   // Проверка на дубликат: тот же клиент уже прикреплён к этому же слоту
   const dup = recurringCache.find((r) => r.phone === phone && r.slotId === slotId && r.active !== false);
   if (dup) return toast('Этот клиент уже прикреплён к этой тренировке');
@@ -1033,6 +1044,7 @@ async function saveRecurring() {
     group: slot.group,
     daysLabel: GROUP_DAYS_LABEL[slot.group] || '',
     trainerName: slot.trainer,
+    sessionsGenerated: sessionsLeft, // сколько тренировок было сгенерировано при создании — для справки
     active: true,
     createdAt: new Date().toISOString(),
   };
@@ -1043,49 +1055,50 @@ async function saveRecurring() {
     newId = ref.id;
   });
   if (newId) {
-    // Сразу генерируем bookings вперёд, чтобы клиент и тренер увидели результат немедленно,
-    // не дожидаясь, пока тренер первый раз откроет свой кабинет (там тоже есть "доливка").
-    try { await generateRecurringBookings({ id: newId, ...data }); }
+    try { await generateRecurringBookings({ id: newId, ...data }, sessionsLeft); }
     catch (e) { console.error('Не удалось сгенерировать записи для нового прикрепления:', e); }
   }
   closeM('m-recurring');
   await loadRecurring();
-  toast('✅ Клиент прикреплён');
+  toast(`✅ Клиент прикреплён, создано тренировок: ${sessionsLeft}`);
 }
 
-const RECURRING_WEEKS_AHEAD = 8;
 const DAY_MAP_RC = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
 
-function upcomingDatesForDaysRC(daysStr, timeStr, fromDate, weeksAhead) {
+/* Возвращает ровно `count` ближайших дат (ISO), попадающих на дни недели из daysStr,
+   начиная от fromDate (не включая прошлое). В отличие от прежней версии ("N недель вперёд
+   независимо от абонемента"), здесь количество всегда равно остатку занятий клиента —
+   ровно столько раз он должен прийти, не больше. */
+function upcomingDatesForDaysRC(daysStr, timeStr, fromDate, count) {
   const targetDows = (daysStr || '').split(',').map((s) => DAY_MAP_RC[s.trim()]).filter((x) => x !== undefined);
-  if (!targetDows.length) return [];
+  if (!targetDows.length || count <= 0) return [];
   const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
   const dates = [];
-  const horizonDays = weeksAhead * 7 + 7;
-  for (let i = 0; i < horizonDays; i++) {
+  let i = 0;
+  // Защитный предел итераций (на случай некорректных данных), чтобы не уйти в бесконечный цикл.
+  const maxIterations = count * 14 + 60;
+  while (dates.length < count && i < maxIterations) {
     const cand = new Date(fromDate);
     cand.setDate(cand.getDate() + i);
     cand.setHours(hh, mm, 0, 0);
     if (targetDows.includes(cand.getDay()) && cand >= fromDate) dates.push(cand);
+    i++;
   }
   return dates;
 }
 
-/* Генерирует недостающие bookings вперёд для одного recurring-прикрепления.
-   Та же модель, что и в app.js (кабинет тренера на сайте): recurring-клиент получает
-   обычные документы bookings со status: 'upcoming' и source: 'recurring', чтобы клиент
-   видел их в своём личном кабинете и мог отменить конкретную дату, а тренер видел клиента
-   в слоте даже до отметки посещения. */
-async function generateRecurringBookings(recurring) {
-  const existingSnap = await db.collection('bookings').where('recurringId', '==', recurring.id).get();
-  const existingDates = new Set(existingSnap.docs.map((d) => d.data().trainingDate).filter(Boolean));
-
+/* Генерирует РОВНО `count` bookings вперёд для одного recurring-прикрепления (обычно
+   count = sessionsLeft клиента на момент прикрепления). recurring-клиент получает обычные
+   документы bookings со status: 'upcoming' и source: 'recurring', чтобы клиент видел их
+   в своём личном кабинете и мог отменить конкретную дату, а тренер видел клиента в слоте
+   даже до отметки посещения. Прикрепление одноразовое: при исчерпании сгенерированных
+   тренировок и покупке нового абонемента админ прикрепляет клиента заново. */
+async function generateRecurringBookings(recurring, count) {
   const now = new Date();
-  const candidateDates = upcomingDatesForDaysRC(recurring.daysLabel, recurring.time, now, RECURRING_WEEKS_AHEAD);
+  const dates = upcomingDatesForDaysRC(recurring.daysLabel, recurring.time, now, count);
 
-  for (const dt of candidateDates) {
+  for (const dt of dates) {
     const iso = dt.toISOString();
-    if (existingDates.has(iso)) continue;
     await db.collection('bookings').add({
       name: recurring.slotName,
       trainer: recurring.trainerName,
