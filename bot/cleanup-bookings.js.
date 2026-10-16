@@ -1,0 +1,206 @@
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceAccountKey.json');
+ 
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const db = admin.firestore();
+ 
+const APPLY = process.argv.includes('--apply');
+ 
+async function main() {
+  console.log(APPLY ? '⚠️  РЕЖИМ ПРИМЕНЕНИЯ — документы будут реально удалены' : '🔍 DRY RUN — ничего не будет удалено, только показ');
+  console.log('');
+ 
+  const snap = await db.collection('bookings').get();
+  const all = snap.docs.map((d) => ({ id: d.id, ref: d.ref, ...d.data() }));
+  console.log(`Всего документов в bookings: ${all.length}`);
+ 
+  // ── 1. Битые записи без trainingDate, ещё в статусе upcoming ──
+  const broken = all.filter((b) => b.status === 'upcoming' && !b.trainingDate);
+  console.log(`\n── Битые записи (upcoming без trainingDate): ${broken.length} ──`);
+  broken.forEach((b) => {
+    console.log(`  [${b.id}] ${b.userName || '—'} · ${b.name || '—'} · ${b.trainer || '—'} · +${b.phone || '—'}`);
+  });
+ 
+  // ── 2. Дубликаты: одинаковые phone+name+time+trainingDate+status=upcoming ──
+  const groups = {};
+  all.forEach((b) => {
+    if (b.status !== 'upcoming' || !b.trainingDate) return; // битые уже обработаны отдельно
+    const key = `${b.phone}|${b.name}|${b.time}|${b.trainingDate}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(b);
+  });
+ 
+  const dupGroups = Object.entries(groups).filter(([, arr]) => arr.length > 1);
+  let totalDupsToDelete = 0;
+  console.log(`\n── Группы дублей (больше 1 записи на тот же слот+дату): ${dupGroups.length} ──`);
+  dupGroups.forEach(([key, arr]) => {
+    // Сортируем по createdAt (если есть) — оставляем самый старый, остальные помечаем на удаление
+    arr.sort((a, b) => {
+      const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return ta - tb;
+    });
+    const [keep, ...remove] = arr;
+    console.log(`  Слот: ${key}`);
+    console.log(`    оставляем: [${keep.id}]`);
+    remove.forEach((b) => {
+      console.log(`    удаляем:   [${b.id}]`);
+      totalDupsToDelete++;
+    });
+  });
+ 
+  // Считаем, сколько занятий нужно будет вернуть, по телефону клиента
+  const refundsByPhone = {};
+  dupGroups.forEach(([, arr]) => {
+    const sorted = [...arr].sort((a, b) => {
+      const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return ta - tb;
+    });
+    const [, ...remove] = sorted;
+    remove.forEach((b) => {
+      if (!b.phone) return;
+      refundsByPhone[b.phone] = (refundsByPhone[b.phone] || 0) + 1;
+    });
+  });
+ 
+  console.log(`\nИтого к удалению: ${broken.length} битых + ${totalDupsToDelete} дублей = ${broken.length + totalDupsToDelete}`);
+  if (Object.keys(refundsByPhone).length) {
+    console.log('\n── Занятия, которые будут возвращены клиентам (за удаляемые дубли) ──');
+    Object.entries(refundsByPhone).forEach(([phone, n]) => {
+      console.log(`  +${phone}: +${n} занятие(й)`);
+    });
+  }
+ 
+  if (!APPLY) {
+    console.log('\nЭто был DRY RUN. Чтобы реально удалить и вернуть занятия — запустите:  node cleanup-bookings.js --apply');
+    return;
+  }
+ 
+  console.log('\nУдаляем и возвращаем занятия...');
+  let deleted = 0;
+ 
+  // Удаляем битые — занятие НЕ возвращаем (см. пояснение в шапке файла)
+  for (const b of broken) {
+    await b.ref.delete();
+    deleted++;
+  }
+ 
+  // Удаляем дубли (все, кроме самого старого в каждой группе)
+  for (const [, arr] of dupGroups) {
+    arr.sort((a, b) => {
+      const ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return ta - tb;
+    });
+    const [, ...remove] = arr;
+    for (const b of remove) {
+      await b.ref.delete();
+      deleted++;
+    }
+  }
+ 
+  // Возвращаем занятия клиентам, по одному +1 за каждый удалённый дубль,
+  // транзакционно, чтобы не потерять параллельные изменения.
+  let refunded = 0;
+  for (const [phone, count] of Object.entries(refundsByPhone)) {
+    try {
+      const userRef = db.collection('users').doc(phone);
+      await db.runTransaction(async (tx) => {
+        const userSnap = await tx.get(userRef);
+        if (!userSnap.exists) return;
+        const currentLeft = userSnap.data().sessionsLeft;
+        if (currentLeft === null || currentLeft === undefined) return; // безлимит/не задано — нечего возвращать
+        tx.update(userRef, { sessionsLeft: currentLeft + count });
+      });
+      refunded++;
+    } catch (e) {
+      console.error(`Не удалось вернуть занятия клиенту +${phone}:`, e.message);
+    }
+  }
+ 
+  console.log(`\n✅ Готово. Удалено документов: ${deleted}. Клиентам с возвратом занятий: ${refunded}`);
+ 
+  // ── Шаг 4: обрезаем "лишние" recurring-записи сверх текущего sessionsLeft клиента ──
+  await trimRecurringOverflow();
+}
+ 
+/* Для каждого recurringId: берём все его "upcoming" bookings, сортируем по дате,
+   и если их больше, чем текущий sessionsLeft клиента — удаляем самые ДАЛЬНИЕ по дате
+   (оставляя ближайшие N, где N = sessionsLeft). Так клиент с абонементом на 12 будет
+   видеть ровно 12 (или меньше, если часть уже отмечена) предстоящих тренировок,
+   а не 24+, как было из-за бага "8 недель вперёд". */
+async function trimRecurringOverflow() {
+  console.log('\n── Шаг 4: проверяем recurring-записи на превышение sessionsLeft ──');
+ 
+  const bookingsSnap = await db.collection('bookings').where('status', '==', 'upcoming').get();
+  const bySource = bookingsSnap.docs
+    .map((d) => ({ id: d.id, ref: d.ref, ...d.data() }))
+    .filter((b) => b.source === 'recurring' && b.recurringId && b.trainingDate);
+ 
+  const byRecurringId = {};
+  bySource.forEach((b) => {
+    if (!byRecurringId[b.recurringId]) byRecurringId[b.recurringId] = [];
+    byRecurringId[b.recurringId].push(b);
+  });
+ 
+  const recurringIds = Object.keys(byRecurringId);
+  console.log(`Активных recurring-прикреплений с будущими записями: ${recurringIds.length}`);
+ 
+  let totalTrimmed = 0;
+  const toDeleteByRecurring = {};
+ 
+  for (const recurringId of recurringIds) {
+    const items = byRecurringId[recurringId];
+    const phone = items[0].phone;
+    if (!phone) continue;
+ 
+    let sessionsLeft;
+    try {
+      const userSnap = await db.collection('users').doc(phone).get();
+      sessionsLeft = userSnap.exists ? userSnap.data().sessionsLeft : undefined;
+    } catch (e) {
+      console.error(`Не удалось прочитать клиента +${phone}:`, e.message);
+      continue;
+    }
+ 
+    if (sessionsLeft === null || sessionsLeft === undefined) {
+      console.log(`  [${recurringId}] клиент +${phone}: sessionsLeft не задан — пропускаем (нечего сравнивать)`);
+      continue;
+    }
+ 
+    if (items.length <= sessionsLeft) continue; // всё в порядке, лишнего нет
+ 
+    items.sort((a, b) => new Date(a.trainingDate) - new Date(b.trainingDate));
+    const keep = items.slice(0, sessionsLeft);
+    const remove = items.slice(sessionsLeft);
+ 
+    console.log(`  [${recurringId}] клиент +${phone} (${items[0].userName || '—'}): sessionsLeft=${sessionsLeft}, записей было ${items.length} → оставляем ${keep.length}, удаляем ${remove.length} (самые дальние даты)`);
+    toDeleteByRecurring[recurringId] = remove;
+    totalTrimmed += remove.length;
+  }
+ 
+  console.log(`\nИтого лишних recurring-записей к удалению: ${totalTrimmed}`);
+ 
+  if (!APPLY) {
+    console.log('Это был DRY RUN для шага 4. Чтобы реально удалить — запустите:  node cleanup-bookings.js --apply');
+    return;
+  }
+ 
+  let trimmedDeleted = 0;
+  for (const remove of Object.values(toDeleteByRecurring)) {
+    for (const b of remove) {
+      await b.ref.delete();
+      trimmedDeleted++;
+    }
+  }
+  console.log(`✅ Шаг 4 завершён. Удалено лишних recurring-записей: ${trimmedDeleted}`);
+}
+ 
+main().catch((e) => {
+  console.error('Ошибка:', e);
+  process.exit(1);
+});
+ 
