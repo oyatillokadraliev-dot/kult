@@ -86,15 +86,14 @@ async function getTrainerSchedule(trainer){
    ═══════════════════════════════════════════════════════════ */
 
 /*
-   МОДЕЛЬ (актуальная): постоянному клиенту заранее генерируются обычные документы
-   в bookings на RECURRING_WEEKS_AHEAD недель вперёд (status: 'upcoming', source: 'recurring',
-   recurringId: <id прикрепления>) — это делает сайт (app.js/admin.html). Здесь, в боте, мы
-   эти записи только читаем и дополняем ("доливаем") на случай, если ни сайт, ни админка
-   давно не открывались, а также отмечаем посещение — списание sessionsLeft происходит
-   именно в момент отметки тренером (как для обычных записей, так и для постоянных).
+   МОДЕЛЬ: постоянному клиенту при прикреплении (делается в admin.html) сразу
+   генерируется РОВНО sessionsLeft обычных документов в bookings (status: 'upcoming',
+   source: 'recurring', recurringId: <id прикрепления>) — по одному на каждое оставшееся
+   занятие абонемента. Здесь, в боте, мы эти записи только читаем и отмечаем посещение —
+   списание sessionsLeft происходит за ЛЮБУЮ отметку (attended ИЛИ missed — слот уже
+   зарезервирован под абонемент при прикреплении). Никакой "доливки" здесь больше нет:
+   прикрепление одноразовое, при новом абонементе админ прикрепляет клиента заново.
 */
-const RECURRING_WEEKS_AHEAD=8;
-const DAY_MAP_RC={'Пн':1,'Вт':2,'Ср':3,'Чт':4,'Пт':5,'Сб':6,'Вс':0};
 
 async function getRecurringForTrainer(trainerName){
   const snap=await db.collection('recurringAssignments').where('trainerName','==',trainerName).get();
@@ -110,62 +109,11 @@ function endOfToday(d){
   return new Date(startOfToday(d).getTime()+86400000);
 }
 
-function upcomingDatesForDaysRC(daysStr,timeStr,fromDate,weeksAhead){
-  const targetDows=(daysStr||'').split(',').map(s=>DAY_MAP_RC[s.trim()]).filter(x=>x!==undefined);
-  if(!targetDows.length)return [];
-  const [hh,mm]=(timeStr||'00:00').split(':').map(Number);
-  const dates=[];
-  const horizonDays=weeksAhead*7+7;
-  for(let i=0;i<horizonDays;i++){
-    const cand=new Date(fromDate);
-    cand.setDate(cand.getDate()+i);
-    cand.setHours(hh,mm,0,0);
-    if(targetDows.includes(cand.getDay())&&cand>=fromDate)dates.push(cand);
-  }
-  return dates;
-}
-
-/* Доливает недостающие bookings вперёд для одного recurring-прикрепления. */
-async function generateRecurringBookings(recurring){
-  const existingSnap=await db.collection('bookings').where('recurringId','==',recurring.id).get();
-  const existingDates=new Set(existingSnap.docs.map(d=>d.data().trainingDate).filter(Boolean));
-
-  const now=new Date();
-  const candidateDates=upcomingDatesForDaysRC(recurring.daysLabel,recurring.time,now,RECURRING_WEEKS_AHEAD);
-
-  for(const dt of candidateDates){
-    const iso=dt.toISOString();
-    if(existingDates.has(iso))continue;
-    await db.collection('bookings').add({
-      name:recurring.slotName,
-      trainer:recurring.trainerName,
-      time:recurring.time,
-      days:recurring.daysLabel||'',
-      phone:recurring.phone,
-      userName:recurring.userName,
-      trainerKey:null,
-      status:'upcoming',
-      trainingDate:iso,
-      recurringId:recurring.id,
-      source:'recurring',
-      createdAt:admin.firestore.FieldValue.serverTimestamp(),
-    });
-  }
-}
-
-/* Доливает вперёд ВСЕ активные прикрепления тренера — вызывается лениво при каждом
-   открытии им своих тренировок в боте, чтобы окно сгенерированных дат не иссякало. */
-async function ensureRecurringBookingsFilled(trainerName){
-  const recurring=await getRecurringForTrainer(trainerName);
-  for(const r of recurring){
-    try{ await generateRecurringBookings(r); }
-    catch(e){ console.error('Не удалось доливку recurring-записей для',r.id,e.message); }
-  }
-}
-
 /* Отмечает посещение (разовой ИЛИ постоянной записи — технически одинаковые документы).
-   Списание sessionsLeft происходит ТОЛЬКО для постоянных клиентов (source: 'recurring')
-   и только один раз — для обычных записей списание уже произошло в момент записи на сайте. */
+   Списание sessionsLeft происходит ТОЛЬКО для постоянных клиентов (source: 'recurring'),
+   за ЛЮБУЮ отметку (attended ИЛИ missed — слот уже зарезервирован под абонемент при
+   прикреплении), и только один раз. Для обычных записей списание уже произошло
+   в момент записи на сайте. */
 async function markAttendanceWithSessionCharge(bookingId,status){
   const bookRef=db.collection('bookings').doc(bookingId);
   await db.runTransaction(async(tx)=>{
@@ -244,6 +192,10 @@ async function showTrainerSchedule(chatId,trainer,msgId){
 /* Все клиенты слота — и разовые, и постоянные — теперь лежат в bookings одинаково
    (различаются только полем source). Записи без trainingDate (старый мусор/баг с
    пустыми днями) сюда никогда не попадут — такие записи тренер не увидит нигде. */
+/* Клиенты слота на СЕГОДНЯШНИЙ день (не на любую будущую дату!). Раньше здесь не было
+   верхней границы по дате — это пропускало все будущие upcoming-записи, включая разные
+   недели вперёд у постоянных клиентов, и разваливало один недельный слот на несколько
+   "виртуальных" слотов с разными датами в интерфейсе бота. */
 async function getSlotClients(trainer,s){
   const snap=await db.collection('bookings')
     .where('trainer','==',trainer.name)
@@ -252,11 +204,16 @@ async function getSlotClients(trainer,s){
     .get();
 
   const now=new Date();
+  const st=startOfToday(now), en=endOfToday(now);
 
   return snap.docs
     .map(d=>({id:d.id,...d.data()}))
     .filter(c=>c.time===s.time)
-    .filter(c=>c.trainingDate&&new Date(c.trainingDate)>=startOfToday(now)) // без даты и прошедшие — не показываем
+    .filter(c=>{
+      if(!c.trainingDate)return false;
+      const dt=new Date(c.trainingDate);
+      return dt>=st&&dt<en; // строго сегодняшний день
+    })
     .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
 }
 
@@ -282,10 +239,6 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   }
   const s=schedule[slotIndex];
   if(!s)return await edit(chatId,msgId,'Занятие не найдено. Открой список тренировок заново.',{reply_markup:backTrainerBtn});
-
-  // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера —
-  // так бот не зависит от того, открывал ли кто-то сайт в последнее время.
-  await ensureRecurringBookingsFilled(trainer.name);
 
   const clientsRaw=await getSlotClients(trainer,s);
   const clients=await withSessionsLeft(clientsRaw);
@@ -655,10 +608,6 @@ cron.schedule('0 8 * * *',async()=>{
       );
 
       if(!todaySlots.length)continue;
-
-      // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера,
-      // чтобы сводка не показывала "0 человек" там, где клиент на самом деле есть.
-      await ensureRecurringBookingsFilled(trainer.name);
 
       let text=`☀️ <b>Доброе утро, ${(trainer.name||'').split(' ')[0]||'тренер'}!</b>\n\nВот твои тренировки на сегодня:\n\n`;
 
