@@ -266,92 +266,31 @@ async function dbAddReview(data) {
 }
 
 /* ── FIRESTORE: ПОСТОЯННЫЕ КЛИЕНТЫ (recurringAssignments) ──── */
-/* Документ recurringAssignments: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, active, createdAt } */
+/* Документ recurringAssignments: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, sessionsGenerated, active, createdAt } */
 /*
-   МОДЕЛЬ (обновлено): постоянному клиенту заранее генерируются обычные документы
-   в bookings на RECURRING_WEEKS_AHEAD недель вперёд, со status: 'upcoming' и
-   source: 'recurring' + recurringId: <id родительского прикрепления>. Благодаря этому:
+   МОДЕЛЬ: при прикреплении клиента к слоту (делается в admin.html) сразу генерируется
+   РОВНО sessionsLeft обычных документов в bookings (status: 'upcoming', source: 'recurring',
+   recurringId: <id прикрепления>) — по одному на каждое оставшееся занятие абонемента,
+   подряд по дням слота. Благодаря этому:
    - клиент видит свои постоянные тренировки в личном кабинете как обычные записи
      и может отменить конкретную дату (не всё прикрепление целиком);
    - тренер видит слот и клиента в нём даже до отметки посещения;
    - списание sessionsLeft происходит НЕ в момент создания этих записей, а только
-     когда тренер отмечает «пришла/не пришла» (markAttendance просто обновляет
-     существующий booking — для recurring-записей это та же функция, что и для разовых).
-   Генерация вперёд выполняется: (а) сразу при создании прикрепления в админке,
-   (б) автоматически "доливается" при каждом заходе тренера в свой кабинет
-   (ensureRecurringBookingsFilled), чтобы окно не иссякало без участия админа.
+     когда тренер отмечает «пришла» ИЛИ «не пришла» — любая отметка занимает
+     зарезервированный слот (см. markAttendance ниже).
+   Прикрепление ОДНОРАЗОВОЕ: когда у клиента заканчиваются сгенерированные тренировки
+   и он покупает новый абонемент, админ заходит в раздел "Постоянные" и прикрепляет
+   клиента заново — никакой автоматической "доливки" здесь больше нет (раньше была,
+   она создавала записи на фиксированное число недель вперёд вне зависимости от
+   абонемента, из-за чего клиенту нагенерировалось тренировок больше, чем у него
+   реально осталось занятий — это и был баг с "лишними" тренировками в ЛК).
 */
-const RECURRING_WEEKS_AHEAD = 8; // на сколько недель вперёд держим сгенерированные bookings
 
 async function dbGetRecurringForTrainer(trainerName) {
   const d = await getDB();
   const q = fb().query(fb().collection(d, 'recurringAssignments'), fb().where('trainerName', '==', trainerName));
   const snap = await fb().getDocs(q);
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((r) => r.active !== false);
-}
-
-/* Возвращает список дат (ISO) на RECURRING_WEEKS_AHEAD недель вперёд для заданных
-   дней недели (daysLabel вида "Пн, Ср, Пт") и времени, начиная от fromDate (не включая прошлое). */
-function upcomingDatesForDays(daysStr, timeStr, fromDate, weeksAhead) {
-  const targetDows = (daysStr || '').split(',').map((s) => DAY_MAP[s.trim()]).filter((x) => x !== undefined);
-  if (!targetDows.length) return [];
-  const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
-  const dates = [];
-  const horizonDays = weeksAhead * 7 + 7;
-  for (let i = 0; i < horizonDays; i++) {
-    const cand = new Date(fromDate);
-    cand.setDate(cand.getDate() + i);
-    cand.setHours(hh, mm, 0, 0);
-    if (targetDows.includes(cand.getDay()) && cand >= fromDate) dates.push(cand);
-  }
-  return dates;
-}
-
-/* Создаёт для одного recurring-прикрепления недостающие bookings вперёд
-   (не трогая уже существующие — определяем "уже есть" по recurringId + trainingDate). */
-async function dbGenerateRecurringBookings(recurring) {
-  const d = await getDB();
-  const existingSnap = await fb().getDocs(
-    fb().query(fb().collection(d, 'bookings'), fb().where('recurringId', '==', recurring.id))
-  );
-  const existingDates = new Set(
-    existingSnap.docs.map((doc) => doc.data().trainingDate).filter(Boolean)
-  );
-
-  const now = new Date();
-  const candidateDates = upcomingDatesForDays(recurring.daysLabel, recurring.time, now, RECURRING_WEEKS_AHEAD);
-
-  let created = 0;
-  for (const dt of candidateDates) {
-    const iso = dt.toISOString();
-    if (existingDates.has(iso)) continue;
-    await d.collection('bookings').add({
-      name: recurring.slotName,
-      trainer: recurring.trainerName,
-      time: recurring.time,
-      days: recurring.daysLabel || '',
-      phone: recurring.phone,
-      userName: recurring.userName,
-      trainerKey: null,
-      status: 'upcoming',
-      trainingDate: iso,
-      recurringId: recurring.id,
-      source: 'recurring',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    created++;
-  }
-  return created;
-}
-
-/* Подтягивает (создаёт недостающие) bookings вперёд для ВСЕХ активных прикреплений
-   данного тренера. Вызывается лениво при каждом открытии кабинета тренера, так что
-   окно никогда не "кончается", даже если никто не открывал админку. */
-async function ensureRecurringBookingsFilled(recurring) {
-  for (const r of recurring) {
-    try { await dbGenerateRecurringBookings(r); }
-    catch (e) { console.error('Не удалось сгенерировать recurring-записи для', r.id, e); }
-  }
 }
 
 /* Отмена ОДНОЙ даты постоянной тренировки клиентом из личного кабинета.
@@ -1199,44 +1138,46 @@ async function renderTC() {
   const list = document.getElementById('tc-list');
   list.innerHTML = '<div class="lk-empty-state">Загружаем данные...</div>';
 
-  const recurring = await dbGetRecurringForTrainer(trainer.name);
-  // Доливаем недостающие даты вперёд для постоянных клиентов этого тренера —
-  // так окно сгенерированных записей никогда не кончается само по себе.
-  await ensureRecurringBookingsFilled(recurring);
-
   const allRaw = await dbGetTrainerBookings(user.trainerKey, trainer.name);
 
-  // Тренер видит только будущие и не отмеченные (status upcoming) записи.
-  // Записи без даты (старый мусор) тоже скрываем, чтобы не путать.
+  // Тренер видит ТОЛЬКО тренировки СЕГОДНЯШНЕГО дня (не все будущие записи вообще!).
+  // Раньше здесь было условие ">= startToday", которое пропускало ЛЮБУЮ будущую upcoming-
+  // запись — в том числе на следующей неделе. Поскольку recurring-клиентам теперь заранее
+  // генерируются записи на много будущих дат, это разваливало один недельный слот на
+  // несколько строк (одна на каждую будущую дату: Сб, Вт, Чт...), именно это было видно
+  // на скриншоте бага с тремя "Силовая" на разные дни. Фикс: показываем только даты,
+  // попадающие в текущие календарные сутки.
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(startToday.getTime() + 86400000);
 
   const all = allRaw.filter((b) => {
     if (b.status !== 'upcoming') return false;       // уже отмеченные/отменённые скрываем
     if (!b.trainingDate) return false;                // без даты — не показываем (см. патч 1)
-    return new Date(b.trainingDate) >= startToday;    // прошедшие даты скрываем
+    const dt = new Date(b.trainingDate);
+    return dt >= startToday && dt < endToday;         // строго сегодняшний день, не "любое будущее"
   });
 
   all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
-  // ВСЕ записи (разовые и постоянные) теперь лежат в bookings одинаково,
-  // поэтому группируем их общим проходом по времени, названию И дню недели.
+  // Все сегодняшние записи (разовые и постоянные) группируем по времени и названию —
+  // день у всех будет один и тот же (сегодня), поэтому его в ключ можно не добавлять,
+  // но оставляем для единообразия с остальным кодом.
+  const todayAbbr = DAY_ABBR_RU[startToday.getDay()];
   const groups = {};
   all.forEach((b) => {
-    const dayLabel = fmtWeekday(b.trainingDate);
-    const key = `${b.time}|${b.name}|${dayLabel}`;
-    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: dayLabel, clients: [] };
+    const key = `${b.time}|${b.name}`;
+    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: todayAbbr, clients: [] };
     groups[key].clients.push(b);
   });
 
   // Пункт "тренер должен видеть тренировку даже если никто не записан": строим список
-  // ВСЕХ слотов этого тренера из общего расписания (SCHEDULE), ограниченный сегодняшним
-  // днём, и создаём для них пустую группу, если туда ещё не попал ни один клиент.
+  // ВСЕХ слотов этого тренера из общего расписания (SCHEDULE) на сегодняшний день,
+  // и создаём для них пустую группу, если туда ещё не попал ни один клиент.
   const todayDayKey = DAY_KEYS[(startToday.getDay() + 6) % 7]; // getDay(): Вс=0..Сб=6 → DAY_KEYS: mon..sat
-  const todayAbbr = DAY_ABBR_RU[startToday.getDay()];
   (SCHEDULE[todayDayKey] || []).forEach((s) => {
     if (s.trainer !== trainer.name) return;
-    const key = `${s.time}|${s.name}|${todayAbbr}`;
+    const key = `${s.time}|${s.name}`;
     if (!groups[key]) groups[key] = { time: s.time, name: s.name, days: todayAbbr, clients: [] };
   });
 
@@ -1325,8 +1266,10 @@ async function markAttendance(bookingId, status, btn) {
 
       tx.update(bookRef, { status });
 
-      // Списываем занятие только для постоянных клиентов и только если это ещё не было
-      // сделано раньше (defensive: если вдруг запись уже не 'upcoming', не списываем повторно).
+      // Списываем занятие для постоянных клиентов за ЛЮБУЮ отметку (attended ИЛИ missed) —
+      // слот уже был зарезервирован под абонемент в момент прикрепления, и отметка тренера
+      // (пришла или нет) просто фиксирует факт использования этого зарезервированного места.
+      // Списываем только один раз (defensive: если запись уже не 'upcoming', повторно не трогаем).
       if (booking.source === 'recurring' && booking.status === 'upcoming' && booking.phone) {
         const userRef = d.collection('users').doc(booking.phone);
         const userSnap = await tx.get(userRef);
@@ -1396,6 +1339,7 @@ async function confirmGuest() {
       source: 'guest',
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
+
     closeOv('ov-guest');
     toast('Гость добавлен');
     await renderTC();
