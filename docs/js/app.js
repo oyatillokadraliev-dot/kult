@@ -1140,51 +1140,69 @@ async function renderTC() {
 
   const allRaw = await dbGetTrainerBookings(user.trainerKey, trainer.name);
 
-  // Тренер видит ТОЛЬКО тренировки СЕГОДНЯШНЕГО дня (не все будущие записи вообще!).
-  // Раньше здесь было условие ">= startToday", которое пропускало ЛЮБУЮ будущую upcoming-
-  // запись — в том числе на следующей неделе. Поскольку recurring-клиентам теперь заранее
-  // генерируются записи на много будущих дат, это разваливало один недельный слот на
-  // несколько строк (одна на каждую будущую дату: Сб, Вт, Чт...), именно это было видно
-  // на скриншоте бага с тремя "Силовая" на разные дни. Фикс: показываем только даты,
-  // попадающие в текущие календарные сутки.
+  // Тренер должен видеть ВСЕ свои слоты за всю неделю всегда — независимо от того,
+  // какой сегодня день, и даже если на слот никто не записан. Поэтому сначала строим
+  // список слотов из общего расписания (SCHEDULE) по ВСЕМ дням недели, а не только
+  // сегодняшнему. Для каждого слота клиентов показываем на его БЛИЖАЙШУЮ предстоящую
+  // дату (а не "любую будущую дату" — иначе один недельный слот с несколькими сгенери-
+  // рованными recurring-записями вперёд снова расползается на несколько одинаковых строк,
+  // как было раньше при показе "всех будущих" без ограничения).
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
-  const endToday = new Date(startToday.getTime() + 86400000);
 
-  const all = allRaw.filter((b) => {
+  const upcoming = allRaw.filter((b) => {
     if (b.status !== 'upcoming') return false;       // уже отмеченные/отменённые скрываем
     if (!b.trainingDate) return false;                // без даты — не показываем (см. патч 1)
-    const dt = new Date(b.trainingDate);
-    return dt >= startToday && dt < endToday;         // строго сегодняшний день, не "любое будущее"
+    return new Date(b.trainingDate) >= startToday;    // прошедшее не показываем
   });
+  upcoming.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
-  all.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
-
-  // Все сегодняшние записи (разовые и постоянные) группируем по времени и названию —
-  // день у всех будет один и тот же (сегодня), поэтому его в ключ можно не добавлять,
-  // но оставляем для единообразия с остальным кодом.
-  const todayAbbr = DAY_ABBR_RU[startToday.getDay()];
+  // Группируем слот-кандидаты по "время|название", без привязки к конкретному дню —
+  // в SCHEDULE один и тот же слот может быть записан на несколько дней недели сразу
+  // (group: 'tts' → Вт, Чт, Сб), все они относятся к одному и тому же разделу в кабинете.
   const groups = {};
-  all.forEach((b) => {
+  DAY_KEYS.forEach((dayKey) => {
+    (SCHEDULE[dayKey] || []).forEach((s) => {
+      if (s.trainer !== trainer.name) return;
+      const key = `${s.time}|${s.name}`;
+      if (!groups[key]) groups[key] = { time: s.time, name: s.name, dayKeys: new Set(), clients: [] };
+      groups[key].dayKeys.add(dayKey);
+    });
+  });
+
+  // Для каждого слота находим ближайшую предстоящую дату среди его upcoming-записей
+  // и оставляем в клиентах только записи именно на эту дату.
+  Object.values(groups).forEach((g) => {
+    const matching = upcoming.filter((b) => b.time === g.time && b.name === g.name);
+    if (!matching.length) return;
+    const nearestDate = matching[0].trainingDate; // matching уже отсортирован по дате
+    g.clients = matching.filter((b) => b.trainingDate === nearestDate);
+  });
+
+  // Также может найтись booking, чей слот (время+название) уже не фигурирует в текущем
+  // SCHEDULE (слот переименовали/удалили в админке, а запись осталась) — чтобы такую
+  // запись не "потерять" молча, заводим под неё отдельную группу.
+  upcoming.forEach((b) => {
     const key = `${b.time}|${b.name}`;
-    if (!groups[key]) groups[key] = { time: b.time, name: b.name, days: todayAbbr, clients: [] };
-    groups[key].clients.push(b);
+    if (groups[key]) return;
+    const dayLabel = fmtWeekday(b.trainingDate);
+    const dayKey = DAY_LABEL_TO_KEY[dayLabel];
+    groups[key] = { time: b.time, name: b.name, dayKeys: new Set(dayKey ? [dayKey] : []), clients: upcoming.filter((x) => x.time === b.time && x.name === b.name && x.trainingDate === b.trainingDate) };
   });
 
-  // Пункт "тренер должен видеть тренировку даже если никто не записан": строим список
-  // ВСЕХ слотов этого тренера из общего расписания (SCHEDULE) на сегодняшний день,
-  // и создаём для них пустую группу, если туда ещё не попал ни один клиент.
-  const todayDayKey = DAY_KEYS[(startToday.getDay() + 6) % 7]; // getDay(): Вс=0..Сб=6 → DAY_KEYS: mon..sat
-  (SCHEDULE[todayDayKey] || []).forEach((s) => {
-    if (s.trainer !== trainer.name) return;
-    const key = `${s.time}|${s.name}`;
-    if (!groups[key]) groups[key] = { time: s.time, name: s.name, days: todayAbbr, clients: [] };
-  });
-
-  const items = Object.values(groups).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  const items = Object.values(groups)
+    .map((g) => ({
+      time: g.time,
+      name: g.name,
+      days: [...g.dayKeys].map((dk) => DAY_KEY_TO_LABEL[dk]).filter(Boolean).sort((a, b) => (DAY_MAP[a] || 0) - (DAY_MAP[b] || 0)).join(', '),
+      clients: g.clients,
+    }))
+    .sort((a, b) => String(a.time).localeCompare(String(b.time)));
 
   // Подгружаем данные клиентов (для проверки "абонемент закончился" у постоянных клиентов)
-  const recPhones = [...new Set(all.filter((b) => b.source === 'recurring').map((b) => b.phone).filter(Boolean))];
+  const recPhones = [...new Set(
+    items.flatMap((g) => g.clients).filter((c) => c.source === 'recurring').map((c) => c.phone).filter(Boolean)
+  )];
   if (recPhones.length) await ensureClientLookup(recPhones);
 
   list.innerHTML = items.length
@@ -1229,7 +1247,7 @@ async function renderTC() {
         </div>
         <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.days)})">+ Гость (разовый визит без записи)</button>
       </div>`).join('')
-    : '<div class="lk-empty-state">На сегодня в расписании нет тренировок</div>';
+    : '<div class="lk-empty-state">В расписании пока нет ваших тренировок</div>';
 }
 function toggleTC(i) {
   document.getElementById('tc-cl-' + i)?.classList.toggle('open');
