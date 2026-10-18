@@ -192,10 +192,10 @@ async function showTrainerSchedule(chatId,trainer,msgId){
 /* Все клиенты слота — и разовые, и постоянные — теперь лежат в bookings одинаково
    (различаются только полем source). Записи без trainingDate (старый мусор/баг с
    пустыми днями) сюда никогда не попадут — такие записи тренер не увидит нигде. */
-/* Клиенты слота на СЕГОДНЯШНИЙ день (не на любую будущую дату!). Раньше здесь не было
-   верхней границы по дате — это пропускало все будущие upcoming-записи, включая разные
-   недели вперёд у постоянных клиентов, и разваливало один недельный слот на несколько
-   "виртуальных" слотов с разными датами в интерфейсе бота. */
+/* Клиенты слота на его БЛИЖАЙШУЮ предстоящую дату (не "сегодня", не "любую будущую
+   дату вообще"). Тренер должен видеть этот слот в любой день недели (даже если сегодня
+   у слота нет занятия), а клиентов — именно на следующее по времени занятие, а не
+   россыпью по всем сгенерированным датам вперёд у постоянных клиентов. */
 async function getSlotClients(trainer,s){
   const snap=await db.collection('bookings')
     .where('trainer','==',trainer.name)
@@ -203,18 +203,17 @@ async function getSlotClients(trainer,s){
     .where('status','==','upcoming')
     .get();
 
-  const now=new Date();
-  const st=startOfToday(now), en=endOfToday(now);
+  const st=startOfToday(new Date());
 
-  return snap.docs
+  const upcoming=snap.docs
     .map(d=>({id:d.id,...d.data()}))
     .filter(c=>c.time===s.time)
-    .filter(c=>{
-      if(!c.trainingDate)return false;
-      const dt=new Date(c.trainingDate);
-      return dt>=st&&dt<en; // строго сегодняшний день
-    })
+    .filter(c=>c.trainingDate&&new Date(c.trainingDate)>=st)
     .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
+
+  if(!upcoming.length)return [];
+  const nearestDate=upcoming[0].trainingDate;
+  return upcoming.filter(c=>c.trainingDate===nearestDate);
 }
 
 /* Остатки абонемента для клиентов-подписчиков (чтобы показать "абонемент закончился"
