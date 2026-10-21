@@ -1278,24 +1278,29 @@ async function markAttendance(bookingId, status, btn) {
     const bookRef = d.collection('bookings').doc(bookingId);
 
     await d.runTransaction(async (tx) => {
+      // ВАЖНО: Firestore требует, чтобы ВСЕ чтения (tx.get) в транзакции шли раньше
+      // ВСЕХ записей (tx.update/tx.set) — нарушение этого порядка даёт ошибку
+      // "Firestore transactions require all reads to be executed before all writes."
+      // Поэтому сначала делаем оба чтения (booking и, если нужно, user), и только
+      // потом вызываем tx.update.
       const bookSnap = await tx.get(bookRef);
       if (!bookSnap.exists) throw new Error('booking_not_found');
       const booking = bookSnap.data();
 
+      const shouldCharge = booking.source === 'recurring' && booking.status === 'upcoming' && booking.phone;
+      const userRef = shouldCharge ? d.collection('users').doc(booking.phone) : null;
+      const userSnap = userRef ? await tx.get(userRef) : null;
+
+      // Теперь, когда все чтения позади, выполняем записи.
       tx.update(bookRef, { status });
 
       // Списываем занятие для постоянных клиентов за ЛЮБУЮ отметку (attended ИЛИ missed) —
       // слот уже был зарезервирован под абонемент в момент прикрепления, и отметка тренера
       // (пришла или нет) просто фиксирует факт использования этого зарезервированного места.
-      // Списываем только один раз (defensive: если запись уже не 'upcoming', повторно не трогаем).
-      if (booking.source === 'recurring' && booking.status === 'upcoming' && booking.phone) {
-        const userRef = d.collection('users').doc(booking.phone);
-        const userSnap = await tx.get(userRef);
-        if (userSnap.exists) {
-          const currentLeft = userSnap.data().sessionsLeft;
-          if (currentLeft !== null && currentLeft !== undefined) {
-            tx.update(userRef, { sessionsLeft: Math.max(0, currentLeft - 1) });
-          }
+      if (userSnap && userSnap.exists) {
+        const currentLeft = userSnap.data().sessionsLeft;
+        if (currentLeft !== null && currentLeft !== undefined) {
+          tx.update(userRef, { sessionsLeft: Math.max(0, currentLeft - 1) });
         }
       }
     });
