@@ -117,20 +117,23 @@ function endOfToday(d){
 async function markAttendanceWithSessionCharge(bookingId,status){
   const bookRef=db.collection('bookings').doc(bookingId);
   await db.runTransaction(async(tx)=>{
+    // ВАЖНО: Firestore требует, чтобы ВСЕ чтения (tx.get) шли раньше ВСЕХ записей
+    // (tx.update) — иначе ошибка "transactions require all reads to be executed
+    // before all writes". Поэтому читаем booking И (если нужно) user ДО любого update.
     const bookSnap=await tx.get(bookRef);
     if(!bookSnap.exists)throw new Error('booking_not_found');
     const booking=bookSnap.data();
 
+    const shouldCharge=booking.source==='recurring'&&booking.status==='upcoming'&&booking.phone;
+    const userRef=shouldCharge?db.collection('users').doc(booking.phone):null;
+    const userSnap=userRef?await tx.get(userRef):null;
+
     tx.update(bookRef,{status});
 
-    if(booking.source==='recurring'&&booking.status==='upcoming'&&booking.phone){
-      const userRef=db.collection('users').doc(booking.phone);
-      const userSnap=await tx.get(userRef);
-      if(userSnap.exists){
-        const currentLeft=userSnap.data().sessionsLeft;
-        if(currentLeft!==null&&currentLeft!==undefined){
-          tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
-        }
+    if(userSnap&&userSnap.exists){
+      const currentLeft=userSnap.data().sessionsLeft;
+      if(currentLeft!==null&&currentLeft!==undefined){
+        tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
       }
     }
   });
