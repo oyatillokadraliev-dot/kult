@@ -266,24 +266,18 @@ async function dbAddReview(data) {
 }
 
 /* ── FIRESTORE: ПОСТОЯННЫЕ КЛИЕНТЫ (recurringAssignments) ──── */
-/* Документ recurringAssignments: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, sessionsGenerated, active, createdAt } */
+/* Документ recurringAssignments: { phone, userName, slotId, slotName, time, group, daysLabel, trainerName, active, createdAt } */
 /*
-   МОДЕЛЬ: при прикреплении клиента к слоту (делается в admin.html) сразу генерируется
-   РОВНО sessionsLeft обычных документов в bookings (status: 'upcoming', source: 'recurring',
-   recurringId: <id прикрепления>) — по одному на каждое оставшееся занятие абонемента,
-   подряд по дням слота. Благодаря этому:
-   - клиент видит свои постоянные тренировки в личном кабинете как обычные записи
-     и может отменить конкретную дату (не всё прикрепление целиком);
-   - тренер видит слот и клиента в нём даже до отметки посещения;
-   - списание sessionsLeft происходит НЕ в момент создания этих записей, а только
-     когда тренер отмечает «пришла» ИЛИ «не пришла» — любая отметка занимает
-     зарезервированный слот (см. markAttendance ниже).
-   Прикрепление ОДНОРАЗОВОЕ: когда у клиента заканчиваются сгенерированные тренировки
-   и он покупает новый абонемент, админ заходит в раздел "Постоянные" и прикрепляет
-   клиента заново — никакой автоматической "доливки" здесь больше нет (раньше была,
-   она создавала записи на фиксированное число недель вперёд вне зависимости от
-   абонемента, из-за чего клиенту нагенерировалось тренировок больше, чем у него
-   реально осталось занятий — это и был баг с "лишними" тренировками в ЛК).
+   НОВАЯ МОДЕЛЬ (вместо генерации пачки записей вперёд):
+   У recurring-прикрепления в любой момент существует максимум ОДНА активная (upcoming)
+   запись в bookings — на её ближайшую дату. Следующая запись создаётся автоматически:
+     - когда тренер отмечает текущую "пришла" / "не пришла" (markAttendance),
+     - либо когда клиент жмёт "не смогу прийти" на текущую (cancelRecurringOccurrence) —
+       в этом случае абонемент НЕ списывается, просто сразу создаётся запись на следующую
+       дату того же слота.
+   Благодаря этому у recurring-слота никогда не бывает двух одновременных upcoming-записей
+   на разные даты — а значит в кабинетах клиента/тренера нечему "перепутаться" или задвоиться.
+   Списание sessionsLeft происходит ТОЛЬКО когда тренер отмечает attended или missed.
 */
 
 async function dbGetRecurringForTrainer(trainerName) {
@@ -293,12 +287,68 @@ async function dbGetRecurringForTrainer(trainerName) {
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((r) => r.active !== false);
 }
 
-/* Отмена ОДНОЙ даты постоянной тренировки клиентом из личного кабинета.
-   В отличие от cancelBook() для обычной записи — НЕ возвращает занятие на sessionsLeft,
-   потому что оно ещё не было списано (списание происходит только по факту отметки тренером). */
-async function dbCancelRecurringBooking(bookingId) {
+const DAY_MAP_RC = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
+
+/* Следующая дата (ISO) для recurring-слота, попадающая на один из его дней недели,
+   строго позже fromDate (или >= fromDate, если includeToday=true и время ещё не прошло). */
+function nextRecurringDate(daysLabel, timeStr, fromDate) {
+  const targetDows = (daysLabel || '').split(',').map((s) => DAY_MAP_RC[s.trim()]).filter((x) => x !== undefined);
+  if (!targetDows.length) return null;
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
+  for (let i = 0; i < 14; i++) {
+    const cand = new Date(fromDate);
+    cand.setDate(cand.getDate() + i);
+    cand.setHours(hh, mm, 0, 0);
+    if (targetDows.includes(cand.getDay()) && cand > fromDate) return cand;
+  }
+  return null;
+}
+
+/* Создаёт ровно ОДНУ новую upcoming-запись для recurring-прикрепления на его ближайшую
+   будущую дату (строго после baseDate). Используется и при первом прикреплении (admin.html
+   вызывает аналогичную логику на своей стороне), и здесь — при автоматическом "довыпуске"
+   следующей записи после отметки/отмены текущей. */
+async function createNextRecurringBooking(recurring, baseDate) {
+  const nextDate = nextRecurringDate(recurring.daysLabel, recurring.time, baseDate || new Date());
+  if (!nextDate) return null;
   const d = await getDB();
-  await d.collection('bookings').doc(bookingId).set({ status: 'cancelled_by_client' }, { merge: true });
+  const ref = await d.collection('bookings').add({
+    name: recurring.slotName,
+    trainer: recurring.trainerName,
+    time: recurring.time,
+    days: recurring.daysLabel || '',
+    phone: recurring.phone,
+    userName: recurring.userName,
+    trainerKey: null,
+    status: 'upcoming',
+    trainingDate: nextDate.toISOString(),
+    recurringId: recurring.id,
+    source: 'recurring',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  return ref.id;
+}
+
+/* Клиент отменяет СВОЮ ближайшую постоянную тренировку ("не смогу прийти").
+   Абонемент НЕ списывается — это предупреждённая заранее отмена. Текущая запись
+   помечается cancelled_by_client, и сразу создаётся следующая запись того же
+   прикрепления на следующую дату, чтобы клиент не терял место в расписании. */
+async function dbCancelRecurringBooking(booking) {
+  const d = await getDB();
+  await d.collection('bookings').doc(booking.id).set({ status: 'cancelled_by_client' }, { merge: true });
+
+  if (booking.recurringId) {
+    try {
+      const recSnap = await d.collection('recurringAssignments').doc(booking.recurringId).get();
+      if (recSnap.exists && recSnap.data().active !== false) {
+        const recurring = { id: recSnap.id, ...recSnap.data() };
+        const baseDate = booking.trainingDate ? new Date(booking.trainingDate) : new Date();
+        await createNextRecurringBooking(recurring, baseDate);
+      }
+    } catch (e) {
+      console.error('Не удалось создать следующую постоянную тренировку после отмены:', e);
+    }
+  }
 }
 
 /* ── INIT ────────────────────────────────────────── */
@@ -989,20 +1039,25 @@ if (hasAb) {
          target="_blank" rel="noopener noreferrer" class="tg-banner-btn">Подключить</a>
     </div>` : '';
  
-  // Список записей
+  // Список записей. В ЛК клиента показываем ровно три видимых статуса:
+  //   upcoming             → "Предстоит" (+ кнопка отмены)
+  //   attended             → "Посещено"
+  //   missed ИЛИ cancelled_by_client → "Пропуск"
+  // Отменённая клиентом запись внешне выглядит так же, как пропуск, но абонемент
+  // за неё не списан (см. dbCancelRecurringBooking / cancelBook) — это не должно
+  // путать клиента: с его точки зрения тренировка просто не состоялась.
   const list   = document.getElementById('lk-list');
-  const sorted = [...bookings].sort((a, b) =>
-    new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0)
-  );
- 
+  const sorted = [...bookings]
+    .filter((b) => b.status !== 'cancelled_by_client' || b.source === 'recurring')
+    .sort((a, b) => new Date(b.trainingDate || 0) - new Date(a.trainingDate || 0));
+
   list.innerHTML = sorted.length
     ? sorted.map((b) => {
         const status = b.status || 'upcoming';
         const isRecurring = b.source === 'recurring';
         const badge  =
           status === 'attended' ? '<span class="lk-status-badge lk-status-attended">Посещено</span>' :
-          status === 'missed'   ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>'   :
-          status === 'cancelled_by_client' ? '<span class="lk-status-badge lk-status-missed">Отменено</span>' :
+          (status === 'missed' || status === 'cancelled_by_client') ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>' :
           '<span class="lk-status-badge lk-status-upcoming">Предстоит</span>';
         const label = Object.values(TRAININGS).find((x) => x.name === b.name)?.name || b.name;
         return `
@@ -1030,16 +1085,19 @@ if (hasAb) {
     : '<div class="lk-empty-state">Вы ещё не записаны ни на одну тренировку.<br>Перейдите в расписание и выберите занятие.</div>';
 }
 
-/* Клиент отменяет ОДНУ дату своей постоянной тренировки (сама постоянная привязка
-   к слоту остаётся — отменяется только этот конкретный день). Занятие НЕ возвращается
-   на sessionsLeft, т.к. оно ещё не было списано (спишется только если бы тренер её отметил). */
+/* Клиент отменяет СВОЮ ближайшую постоянную тренировку ("не смогу прийти").
+   Абонемент НЕ списывается (отмена сделана заранее). Сразу создаётся запись
+   на следующую дату того же прикрепления (см. dbCancelRecurringBooking). */
 async function cancelRecurringOccurrence(id) {
-  if (!id || !confirm('Отменить эту тренировку? Постоянная запись на остальные дни сохранится.')) return;
+  if (!id || !confirm('Не сможете прийти на эту тренировку? Занятие по абонементу не спишется, место в расписании сохранится на следующий раз.')) return;
   try {
-    await dbCancelRecurringBooking(id);
-    bookings = bookings.map((b) => (b.id === id ? { ...b, status: 'cancelled_by_client' } : b));
+    const booking = bookings.find((b) => b.id === id);
+    if (!booking) return;
+    await dbCancelRecurringBooking(booking);
+    // Перечитываем записи клиента, т.к. добавилась новая (следующая) запись
+    bookings = await dbGetBookings(user.phone);
     renderLK();
-    toast('Эта тренировка отменена');
+    toast('Записано: в этот раз вас не будет. Абонемент не тронут.');
   } catch (e) {
     console.error(e);
     toast('Не удалось отменить тренировку');
@@ -1143,19 +1201,25 @@ async function renderTC() {
   // Тренер должен видеть ВСЕ свои слоты за всю неделю всегда — независимо от того,
   // какой сегодня день, и даже если на слот никто не записан. Поэтому сначала строим
   // список слотов из общего расписания (SCHEDULE) по ВСЕМ дням недели, а не только
-  // сегодняшнему. Для каждого слота клиентов показываем на его БЛИЖАЙШУЮ предстоящую
-  // дату (а не "любую будущую дату" — иначе один недельный слот с несколькими сгенери-
-  // рованными recurring-записями вперёд снова расползается на несколько одинаковых строк,
-  // как было раньше при показе "всех будущих" без ограничения).
+  // сегодняшнему.
+  //
+  // ВАЖНО (исправление "съехавших дат"): тренер отмечает посещаемость только за
+  // СЕГОДНЯ. Поэтому клиентов в слоте показываем только если их ближайшая upcoming-
+  // запись приходится именно на сегодня (startToday..endToday). Если у клиента
+  // ближайшая запись — не сегодня (например, слот сегодня не проводится, либо дата
+  // почему-то сместилась), в списке тренера на сегодняшний слот он не появляется —
+  // это и защищает от "28 октября вместо 21-го": раньше код просто брал любую
+  // ближайшую будущую дату, теперь — строго сегодняшнюю.
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(startToday.getTime() + 86400000);
 
-  const upcoming = allRaw.filter((b) => {
+  const todayBookings = allRaw.filter((b) => {
     if (b.status !== 'upcoming') return false;       // уже отмеченные/отменённые скрываем
-    if (!b.trainingDate) return false;                // без даты — не показываем (см. патч 1)
-    return new Date(b.trainingDate) >= startToday;    // прошедшее не показываем
+    if (!b.trainingDate) return false;                // без даты — не показываем
+    const dt = new Date(b.trainingDate);
+    return dt >= startToday && dt < endToday;          // строго СЕГОДНЯ, не раньше и не позже
   });
-  upcoming.sort((a, b) => new Date(a.trainingDate || 0) - new Date(b.trainingDate || 0));
 
   // Группируем слот-кандидаты по "время|название", без привязки к конкретному дню —
   // в SCHEDULE один и тот же слот может быть записан на несколько дней недели сразу
@@ -1170,24 +1234,19 @@ async function renderTC() {
     });
   });
 
-  // Для каждого слота находим ближайшую предстоящую дату среди его upcoming-записей
-  // и оставляем в клиентах только записи именно на эту дату.
   Object.values(groups).forEach((g) => {
-    const matching = upcoming.filter((b) => b.time === g.time && b.name === g.name);
-    if (!matching.length) return;
-    const nearestDate = matching[0].trainingDate; // matching уже отсортирован по дате
-    g.clients = matching.filter((b) => b.trainingDate === nearestDate);
+    g.clients = todayBookings.filter((b) => b.time === g.time && b.name === g.name);
   });
 
-  // Также может найтись booking, чей слот (время+название) уже не фигурирует в текущем
-  // SCHEDULE (слот переименовали/удалили в админке, а запись осталась) — чтобы такую
-  // запись не "потерять" молча, заводим под неё отдельную группу.
-  upcoming.forEach((b) => {
+  // Также может найтись booking на сегодня, чей слот (время+название) уже не
+  // фигурирует в текущем SCHEDULE (слот переименовали/удалили в админке, а запись
+  // осталась) — чтобы такую запись не "потерять" молча, заводим под неё отдельную группу.
+  todayBookings.forEach((b) => {
     const key = `${b.time}|${b.name}`;
     if (groups[key]) return;
     const dayLabel = fmtWeekday(b.trainingDate);
     const dayKey = DAY_LABEL_TO_KEY[dayLabel];
-    groups[key] = { time: b.time, name: b.name, dayKeys: new Set(dayKey ? [dayKey] : []), clients: upcoming.filter((x) => x.time === b.time && x.name === b.name && x.trainingDate === b.trainingDate) };
+    groups[key] = { time: b.time, name: b.name, dayKeys: new Set(dayKey ? [dayKey] : []), clients: todayBookings.filter((x) => x.time === b.time && x.name === b.name) };
   });
 
   const items = Object.values(groups)
@@ -1243,11 +1302,11 @@ async function renderTC() {
                 </button>
               </div>
             </div>`;
-          }).join('') : '<div class="lk-empty-state" style="padding:14px">На это занятие пока никто не записан</div>'}
+          }).join('') : '<div class="lk-empty-state" style="padding:14px">На сегодня никто не записан</div>'}
         </div>
         <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.days)})">+ Гость (разовый визит без записи)</button>
       </div>`).join('')
-    : '<div class="lk-empty-state">В расписании пока нет ваших тренировок</div>';
+    : '<div class="lk-empty-state">Сегодня у вас нет тренировок по расписанию</div>';
 }
 function toggleTC(i) {
   document.getElementById('tc-cl-' + i)?.classList.toggle('open');
@@ -1271,11 +1330,17 @@ async function ensureClientLookup(phones) {
 /* Отмечает посещение (разовой ИЛИ постоянной записи — они теперь одинаковые документы).
    Списание sessionsLeft происходит ЗДЕСЬ и только здесь для постоянных клиентов
    (source: 'recurring'); для обычных записей списание уже произошло при confirmBook(),
-   поэтому второй раз не списываем. */
+   поэтому второй раз не списываем.
+   После отметки (посещено ИЛИ пропуск) для постоянного клиента сразу создаётся
+   следующая запись на следующую дату того же прикрепления — это и заменяет прежнюю
+   "генерацию пачкой вперёд": теперь всегда существует не больше одной будущей записи
+   на recurring-слот, и дублей/съехавших дат в принципе возникнуть не может. */
 async function markAttendance(bookingId, status, btn) {
   try {
     const d = await getDB();
     const bookRef = d.collection('bookings').doc(bookingId);
+
+    let recurringInfo = null; // {recurringId, trainingDate} — для генерации следующей записи вне транзакции
 
     await d.runTransaction(async (tx) => {
       // ВАЖНО: Firestore требует, чтобы ВСЕ чтения (tx.get) в транзакции шли раньше
@@ -1295,15 +1360,34 @@ async function markAttendance(bookingId, status, btn) {
       tx.update(bookRef, { status });
 
       // Списываем занятие для постоянных клиентов за ЛЮБУЮ отметку (attended ИЛИ missed) —
-      // слот уже был зарезервирован под абонемент в момент прикрепления, и отметка тренера
-      // (пришла или нет) просто фиксирует факт использования этого зарезервированного места.
+      // слот уже был зарезервирован под абонемент, и отметка тренера (пришла или нет)
+      // фиксирует факт использования этого зарезервированного места.
       if (userSnap && userSnap.exists) {
         const currentLeft = userSnap.data().sessionsLeft;
         if (currentLeft !== null && currentLeft !== undefined) {
           tx.update(userRef, { sessionsLeft: Math.max(0, currentLeft - 1) });
         }
       }
+
+      if (booking.source === 'recurring' && booking.recurringId) {
+        recurringInfo = { recurringId: booking.recurringId, trainingDate: booking.trainingDate };
+      }
     });
+
+    // Генерация следующей recurring-записи — вне транзакции (не критично для атомарности
+    // списания, а чтение recurringAssignments + add в той же транзакции усложнил бы её).
+    if (recurringInfo) {
+      try {
+        const recSnap = await d.collection('recurringAssignments').doc(recurringInfo.recurringId).get();
+        if (recSnap.exists && recSnap.data().active !== false) {
+          const recurring = { id: recSnap.id, ...recSnap.data() };
+          const baseDate = recurringInfo.trainingDate ? new Date(recurringInfo.trainingDate) : new Date();
+          await createNextRecurringBooking(recurring, baseDate);
+        }
+      } catch (e) {
+        console.error('Не удалось создать следующую постоянную тренировку после отметки:', e);
+      }
+    }
 
     const row = btn.closest('.tc-client-row-full');
     row.querySelectorAll('.tc-attend-btn').forEach((b) => b.classList.remove('active'));
