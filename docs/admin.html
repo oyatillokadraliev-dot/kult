@@ -328,6 +328,20 @@ textarea{resize:vertical;min-height:90px}
           </div>
           <div id="dup-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
         </div>
+        <div class="card">
+          <div class="card-title">Ошибочные отметки на будущие даты</div>
+          <p class="hint" style="margin-bottom:10px">
+            Находит записи (bookings) со статусом «пришла» или «не пришла», у которых дата тренировки
+            ещё не наступила — такое могло появиться из-за старого бага в кабинете тренера.
+            Исправление возвращает статус «Предстоит» и, для постоянных клиентов, возвращает
+            списанное занятие обратно на счётчик (sessionsLeft).
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-g btn-sm" onclick="previewFutureMismarked()">Найти (только проверка)</button>
+            <button class="btn btn-d btn-sm" onclick="fixFutureMismarkedBookings()">Найти и исправить</button>
+          </div>
+          <div id="future-mismarked-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
+        </div>
       </div>
 
     </main>
@@ -1259,6 +1273,90 @@ async function cleanupDuplicateBookings() {
     console.error(e);
     out.textContent = 'Ошибка при удалении: ' + (e.message || '');
     toast('Не удалось удалить дубли');
+  }
+}
+
+/* ── ОБСЛУЖИВАНИЕ БАЗЫ: ошибочные отметки "пришла/не пришла" на будущие даты ─── */
+/* До появления проверки даты в markAttendance() (см. script.js) тренер мог
+   случайно отметить посещение у записи с датой в будущем — такая запись переставала
+   попадать в фильтр "upcoming" в кабинете тренера и становилась тренеру не видна,
+   но продолжала висеть отмеченной в личном кабинете клиента и (для постоянных
+   клиентов) с уже списанным занятием. Эти функции находят такие записи и позволяют
+   вернуть им статус "Предстоит", а постоянным клиентам — вернуть списанное занятие. */
+async function findFutureMismarkedBookings() {
+  const snap = await db.collection('bookings').get();
+  const now = new Date();
+  return snap.docs.filter((doc) => {
+    const b = doc.data();
+    if (b.status !== 'attended' && b.status !== 'missed') return false;
+    if (!b.trainingDate) return false;
+    return new Date(b.trainingDate) > now;
+  });
+}
+
+async function previewFutureMismarked() {
+  const out = document.getElementById('future-mismarked-result');
+  out.textContent = 'Ищем...';
+  try {
+    const docs = await findFutureMismarkedBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено.';
+      return;
+    }
+    const lines = docs.map((doc) => {
+      const b = doc.data();
+      const dateStr = new Date(b.trainingDate).toLocaleString('ru-RU');
+      const st = b.status === 'attended' ? 'пришла' : 'не пришла';
+      const refundNote = (b.source === 'recurring' && b.phone) ? ', занятие будет возвращено на счётчик' : '';
+      return `• ${b.userName || b.phone || '—'} — "${b.name}" ${b.time || ''} (${dateStr}) — отмечено: ${st}${refundNote}`;
+    });
+    out.textContent = `Найдено записей: ${docs.length}\n\n` + lines.join('\n');
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при поиске: ' + (e.message || '');
+  }
+}
+
+async function fixFutureMismarkedBookings() {
+  if (!confirm('Сбросить статус у всех записей с отметкой на ещё не наступившую дату обратно на "Предстоит"? Для постоянных клиентов списанное занятие будет возвращено на счётчик. Действие нельзя отменить одним кликом.')) return;
+  const out = document.getElementById('future-mismarked-result');
+  out.textContent = 'Исправляем...';
+  try {
+    const docs = await findFutureMismarkedBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено, исправлять нечего.';
+      return;
+    }
+
+    const refundByPhone = {}; // phone -> сколько занятий вернуть
+    for (const doc of docs) {
+      const b = doc.data();
+      await db.collection('bookings').doc(doc.id).update({ status: 'upcoming' });
+      if (b.source === 'recurring' && b.phone) {
+        refundByPhone[b.phone] = (refundByPhone[b.phone] || 0) + 1;
+      }
+    }
+
+    let refundedClients = 0;
+    let refundedSessions = 0;
+    for (const [phone, count] of Object.entries(refundByPhone)) {
+      const uRef = db.collection('users').doc(phone);
+      const uSnap = await uRef.get();
+      if (!uSnap.exists) continue;
+      const cur = uSnap.data().sessionsLeft;
+      if (cur === null || cur === undefined) continue; // нет счётчика — нечего возвращать
+      await uRef.update({ sessionsLeft: cur + count });
+      refundedClients++;
+      refundedSessions += count;
+    }
+
+    out.textContent = `Готово. Исправлено записей: ${docs.length}. Возвращено занятий: ${refundedSessions} (${refundedClients} клиент(ов)).`;
+    toast(`✅ Исправлено записей: ${docs.length}`);
+    await loadClients().catch(() => {}); // обновим кэш клиентов, если вкладка уже была открыта
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при исправлении: ' + (e.message || '');
+    toast('Не удалось исправить записи');
   }
 }
 
