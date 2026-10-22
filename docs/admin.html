@@ -59,6 +59,7 @@ textarea{resize:vertical;min-height:90px}
 /* BUTTONS */
 .btn{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:10px 22px;border-radius:100px;border:none;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn-p{background:var(--forest);color:var(--white)}.btn-p:hover{background:var(--ink)}
+.btn-p:disabled{opacity:.6;cursor:not-allowed}
 .btn-g{background:transparent;color:var(--muted);border:1.5px solid var(--border)}.btn-g:hover{color:var(--ink);border-color:var(--ink)}
 .btn-d{background:rgba(220,38,38,.08);color:var(--red)}.btn-d:hover{background:rgba(220,38,38,.16)}
 .btn-sm{padding:7px 14px;font-size:12px}
@@ -314,6 +315,19 @@ textarea{resize:vertical;min-height:90px}
           </div>
           <button class="btn btn-p" onclick="changePw()">Изменить</button>
         </div>
+        <div class="card">
+          <div class="card-title">Обслуживание базы</div>
+          <p class="hint" style="margin-bottom:10px">
+            Находит повторяющиеся записи (одинаковые клиент + тренировка + время + дата) в bookings —
+            такие дубли могли появиться из-за двойного клика по "Прикрепить" до версии с защитой от повторного клика.
+            Сначала проверка, затем — опционально — удаление найденных дублей (оставляется только одна запись из группы).
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-g btn-sm" onclick="findDuplicateBookings()">Найти дубли (только проверка)</button>
+            <button class="btn btn-d btn-sm" onclick="cleanupDuplicateBookings()">Найти и удалить дубли</button>
+          </div>
+          <div id="dup-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
+        </div>
       </div>
 
     </main>
@@ -449,7 +463,7 @@ textarea{resize:vertical;min-height:90px}
     </div>
     <div class="hint" id="rc-hint"></div>
     <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-      <button class="btn btn-p" onclick="saveRecurring()">Прикрепить</button>
+      <button class="btn btn-p" id="btn-save-recurring" onclick="saveRecurring()">Прикрепить</button>
       <button class="btn btn-g" onclick="closeM('m-recurring')">Отмена</button>
     </div>
   </div>
@@ -991,6 +1005,13 @@ function openRecurring() {
     : '<option value="">Нет доступных тренировок — сначала добавьте расписание</option>';
 
   document.getElementById('rc-hint').textContent = '';
+
+  // На случай, если предыдущая попытка сохранить была прервана ошибкой до того,
+  // как finally успел снять блокировку кнопки — на всякий случай снимаем её здесь тоже.
+  const btn = document.getElementById('btn-save-recurring');
+  if (btn) { btn.disabled = false; btn.textContent = 'Прикрепить'; }
+  recurringSaveInFlight = false;
+
   openM('m-recurring');
 }
 
@@ -1010,57 +1031,86 @@ function filterRecurringClientOptions() {
   ));
 }
 
+/* ФИКС: защита от двойного/повторного клика по "Прикрепить" — та же проблема,
+   которая раньше была в confirmBook() из script.js (два быстрых клика создавали
+   два прикрепления и, соответственно, два набора сгенерированных тренировок на
+   одни и те же даты). Флаг recurringSaveInFlight блокирует повторный вызов ДО
+   любых await, плюс кнопка дизейблится синхронно сразу в начале функции. */
+let recurringSaveInFlight = false;
+
 async function saveRecurring() {
-  const phone = document.getElementById('rc-client').value;
-  const slotId = document.getElementById('rc-slot').value;
-  if (!phone) return toast('Выберите клиента');
-  if (!slotId) return toast('Выберите тренировку');
+  if (recurringSaveInFlight) return;
+  recurringSaveInFlight = true;
 
-  const client = clientsCache.find((c) => c.phone === phone);
-  const slot = schedCache[slotId];
-  if (!client || !slot) return toast('Не удалось найти выбранные данные, попробуйте снова');
+  const btn = document.getElementById('btn-save-recurring');
+  if (btn) { btn.disabled = true; btn.textContent = 'Прикрепляем...'; }
 
-  // Прикрепление привязано к ТЕКУЩЕМУ остатку занятий по абонементу клиента: мы сразу
-  // генерируем ровно столько будущих тренировок, сколько у него sessionsLeft. Без абонемента
-  // или с sessionsLeft <= 0 прикреплять нельзя — админу нужно сначала выдать/продлить абонемент.
-  const sessionsLeft = client.sessionsLeft;
-  if (sessionsLeft === null || sessionsLeft === undefined) {
-    return toast('У клиента не задан счётчик занятий — сначала оформите ему абонемент с конкретным числом занятий');
+  try {
+    const phone = document.getElementById('rc-client').value;
+    const slotId = document.getElementById('rc-slot').value;
+    if (!phone) { toast('Выберите клиента'); return; }
+    if (!slotId) { toast('Выберите тренировку'); return; }
+
+    const client = clientsCache.find((c) => c.phone === phone);
+    const slot = schedCache[slotId];
+    if (!client || !slot) { toast('Не удалось найти выбранные данные, попробуйте снова'); return; }
+
+    // Прикрепление привязано к ТЕКУЩЕМУ остатку занятий по абонементу клиента: мы сразу
+    // генерируем ровно столько будущих тренировок, сколько у него sessionsLeft. Без абонемента
+    // или с sessionsLeft <= 0 прикреплять нельзя — админу нужно сначала выдать/продлить абонемент.
+    const sessionsLeft = client.sessionsLeft;
+    if (sessionsLeft === null || sessionsLeft === undefined) {
+      toast('У клиента не задан счётчик занятий — сначала оформите ему абонемент с конкретным числом занятий');
+      return;
+    }
+    if (sessionsLeft <= 0) {
+      toast('У клиента закончились занятия по абонементу — сначала продлите абонемент');
+      return;
+    }
+
+    // Проверка на дубликат. Локальный recurringCache может быть устаревшим (особенно
+    // если это вообще первая попытка сохранить и мы просто подстраховываемся), поэтому
+    // дополнительно перепроверяем прямо в Firestore перед записью.
+    const dupLocal = recurringCache.find((r) => r.phone === phone && r.slotId === slotId && r.active !== false);
+    if (dupLocal) { toast('Этот клиент уже прикреплён к этой тренировке'); return; }
+
+    const dupSnap = await db.collection('recurringAssignments')
+      .where('phone', '==', phone)
+      .where('slotId', '==', slotId)
+      .where('active', '==', true)
+      .get();
+    if (!dupSnap.empty) { toast('Этот клиент уже прикреплён к этой тренировке'); return; }
+
+    const data = {
+      phone,
+      userName: client.name || '',
+      slotId,
+      slotName: slot.name,
+      time: slot.time,
+      group: slot.group,
+      daysLabel: GROUP_DAYS_LABEL[slot.group] || '',
+      trainerName: slot.trainer,
+      sessionsGenerated: sessionsLeft, // сколько тренировок было сгенерировано при создании — для справки
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    let newId;
+    await safe(async () => {
+      const ref = await db.collection('recurringAssignments').add(data);
+      newId = ref.id;
+    });
+    if (newId) {
+      try { await generateRecurringBookings({ id: newId, ...data }, sessionsLeft); }
+      catch (e) { console.error('Не удалось сгенерировать записи для нового прикрепления:', e); }
+    }
+    closeM('m-recurring');
+    await loadRecurring();
+    toast(`✅ Клиент прикреплён, создано тренировок: ${sessionsLeft}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Прикрепить'; }
+    recurringSaveInFlight = false;
   }
-  if (sessionsLeft <= 0) {
-    return toast('У клиента закончились занятия по абонементу — сначала продлите абонемент');
-  }
-
-  // Проверка на дубликат: тот же клиент уже прикреплён к этому же слоту
-  const dup = recurringCache.find((r) => r.phone === phone && r.slotId === slotId && r.active !== false);
-  if (dup) return toast('Этот клиент уже прикреплён к этой тренировке');
-
-  const data = {
-    phone,
-    userName: client.name || '',
-    slotId,
-    slotName: slot.name,
-    time: slot.time,
-    group: slot.group,
-    daysLabel: GROUP_DAYS_LABEL[slot.group] || '',
-    trainerName: slot.trainer,
-    sessionsGenerated: sessionsLeft, // сколько тренировок было сгенерировано при создании — для справки
-    active: true,
-    createdAt: new Date().toISOString(),
-  };
-
-  let newId;
-  await safe(async () => {
-    const ref = await db.collection('recurringAssignments').add(data);
-    newId = ref.id;
-  });
-  if (newId) {
-    try { await generateRecurringBookings({ id: newId, ...data }, sessionsLeft); }
-    catch (e) { console.error('Не удалось сгенерировать записи для нового прикрепления:', e); }
-  }
-  closeM('m-recurring');
-  await loadRecurring();
-  toast(`✅ Клиент прикреплён, создано тренировок: ${sessionsLeft}`);
 }
 
 const DAY_MAP_RC = { 'Пн': 1, 'Вт': 2, 'Ср': 3, 'Чт': 4, 'Пт': 5, 'Сб': 6, 'Вс': 0 };
@@ -1132,6 +1182,84 @@ async function unassignRecurring(id) {
   } catch (e) { console.error('Не удалось отменить будущие записи после отвязки:', e); }
   await loadRecurring();
   toast('Клиент отвязан');
+}
+
+/* ── ОБСЛУЖИВАНИЕ БАЗЫ: поиск / удаление дублей bookings ─────── */
+/* Дубль = одинаковые phone + name (тренировка) + time + trainingDate.
+   Такие дубли могли появиться из-за двойного клика по "Прикрепить" ДО того,
+   как появилась защита recurringSaveInFlight выше — тогда создавалось два
+   recurringAssignments-документа и два набора bookings на одни и те же даты. */
+function groupBookingDocsByKey(docs) {
+  const groups = new Map();
+  docs.forEach((doc) => {
+    const b = doc.data();
+    // Дубли имеет смысл искать только у записей с известными ключевыми полями
+    if (!b.phone || !b.name || !b.time || !b.trainingDate) return;
+    const key = `${b.phone}|${b.name}|${b.time}|${b.trainingDate}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ id: doc.id, ...b });
+  });
+  return [...groups.entries()].filter(([, items]) => items.length > 1);
+}
+
+async function findDuplicateBookings() {
+  const out = document.getElementById('dup-result');
+  out.textContent = 'Ищем дубли...';
+  try {
+    const snap = await db.collection('bookings').get();
+    const dupGroups = groupBookingDocsByKey(snap.docs);
+    if (!dupGroups.length) {
+      out.textContent = 'Дублей не найдено.';
+      return;
+    }
+    const lines = dupGroups.map(([key, items]) => {
+      const sample = items[0];
+      const dateStr = new Date(sample.trainingDate).toLocaleString('ru-RU');
+      return `• ${sample.userName || sample.phone} — "${sample.name}" ${sample.time} (${dateStr}) — копий: ${items.length}`;
+    });
+    out.textContent = `Найдено групп с дублями: ${dupGroups.length}\n\n` + lines.join('\n');
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при поиске: ' + (e.message || '');
+  }
+}
+
+async function cleanupDuplicateBookings() {
+  if (!confirm('Удалить найденные дубли? В каждой группе останется только одна (самая ранняя по createdAt) запись, остальные будут удалены безвозвратно.')) return;
+  const out = document.getElementById('dup-result');
+  out.textContent = 'Ищем и удаляем дубли...';
+  try {
+    const snap = await db.collection('bookings').get();
+    const dupGroups = groupBookingDocsByKey(snap.docs);
+    if (!dupGroups.length) {
+      out.textContent = 'Дублей не найдено, удалять нечего.';
+      return;
+    }
+
+    let totalDeleted = 0;
+    const lines = [];
+    for (const [key, items] of dupGroups) {
+      // Оставляем запись с самым ранним createdAt (а если его нет — просто первую в списке),
+      // остальные копии из этой группы удаляем.
+      const sorted = [...items].sort((a, b) => {
+        const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return ta - tb;
+      });
+      const [keep, ...drop] = sorted;
+      for (const d of drop) {
+        await db.collection('bookings').doc(d.id).delete();
+        totalDeleted++;
+      }
+      lines.push(`• ${keep.userName || keep.phone} — "${keep.name}" ${keep.time}: удалено копий — ${drop.length}, оставлена 1`);
+    }
+    out.textContent = `Готово. Удалено записей: ${totalDeleted}\n\n` + lines.join('\n');
+    toast(`✅ Удалено дублей: ${totalDeleted}`);
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при удалении: ' + (e.message || '');
+    toast('Не удалось удалить дубли');
+  }
 }
 
 /* ── PRICES ──────────────────────────────────────── */
