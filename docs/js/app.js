@@ -1144,9 +1144,16 @@ async function renderTC() {
   // какой сегодня день, и даже если на слот никто не записан. Поэтому сначала строим
   // список слотов из общего расписания (SCHEDULE) по ВСЕМ дням недели, а не только
   // сегодняшнему. Для каждого слота клиентов показываем на его БЛИЖАЙШУЮ предстоящую
-  // дату (а не "любую будущую дату" — иначе один недельный слот с несколькими сгенери-
-  // рованными recurring-записями вперёд снова расползается на несколько одинаковых строк,
-  // как было раньше при показе "всех будущих" без ограничения).
+  // дату — но для КАЖДОГО клиента отдельно, а не на одну общую дату для всех.
+  //
+  // ВАЖНО (фикс): раньше здесь искалась ОДНА самая ранняя дата среди ВСЕХ клиентов
+  // слота (nearestDate), и показывались только те, у кого запись ровно на эту дату —
+  // остальные клиенты слота пропадали из списка целиком. Из-за этого при отметке
+  // посещения одному клиенту (его запись переставала быть 'upcoming' и переставала
+  // участвовать в подсчёте) nearestDate на следующей отрисовке мог "перескочить"
+  // на другую дату, где из исходных 12 клиентов остаётся всего 1 — отсюда эффект
+  // "было 12 клиентов, отметили одного, осталось 2". Теперь у каждого клиента
+  // берётся его СОБСТВЕННАЯ ближайшая предстоящая запись в этом слоте.
   const startToday = new Date();
   startToday.setHours(0, 0, 0, 0);
 
@@ -1170,24 +1177,46 @@ async function renderTC() {
     });
   });
 
-  // Для каждого слота находим ближайшую предстоящую дату среди его upcoming-записей
-  // и оставляем в клиентах только записи именно на эту дату.
+  // Для каждого слота: для КАЖДОГО клиента отдельно берём его ближайшую предстоящую
+  // запись в этом слоте (а не одну общую дату на всех — иначе часть клиентов пропадает).
   Object.values(groups).forEach((g) => {
     const matching = upcoming.filter((b) => b.time === g.time && b.name === g.name);
     if (!matching.length) return;
-    const nearestDate = matching[0].trainingDate; // matching уже отсортирован по дате
-    g.clients = matching.filter((b) => b.trainingDate === nearestDate);
+    const byClient = {};
+    matching.forEach((b) => {
+      const clientKey = b.phone || b.userName;
+      const cur = byClient[clientKey];
+      if (!cur || new Date(b.trainingDate) < new Date(cur.trainingDate)) {
+        byClient[clientKey] = b;
+      }
+    });
+    g.clients = Object.values(byClient).sort((a, b) => new Date(a.trainingDate) - new Date(b.trainingDate));
   });
 
   // Также может найтись booking, чей слот (время+название) уже не фигурирует в текущем
   // SCHEDULE (слот переименовали/удалили в админке, а запись осталась) — чтобы такую
-  // запись не "потерять" молча, заводим под неё отдельную группу.
+  // запись не "потерять" молча, заводим под неё отдельную группу (тоже по одному клиенту
+  // на его ближайшую запись в этом слоте).
   upcoming.forEach((b) => {
     const key = `${b.time}|${b.name}`;
     if (groups[key]) return;
     const dayLabel = fmtWeekday(b.trainingDate);
     const dayKey = DAY_LABEL_TO_KEY[dayLabel];
-    groups[key] = { time: b.time, name: b.name, dayKeys: new Set(dayKey ? [dayKey] : []), clients: upcoming.filter((x) => x.time === b.time && x.name === b.name && x.trainingDate === b.trainingDate) };
+    const matching = upcoming.filter((x) => x.time === b.time && x.name === b.name);
+    const byClient = {};
+    matching.forEach((x) => {
+      const clientKey = x.phone || x.userName;
+      const cur = byClient[clientKey];
+      if (!cur || new Date(x.trainingDate) < new Date(cur.trainingDate)) {
+        byClient[clientKey] = x;
+      }
+    });
+    groups[key] = {
+      time: b.time,
+      name: b.name,
+      dayKeys: new Set(dayKey ? [dayKey] : []),
+      clients: Object.values(byClient).sort((a, c) => new Date(a.trainingDate) - new Date(c.trainingDate)),
+    };
   });
 
   const items = Object.values(groups)
@@ -1271,7 +1300,10 @@ async function ensureClientLookup(phones) {
 /* Отмечает посещение (разовой ИЛИ постоянной записи — они теперь одинаковые документы).
    Списание sessionsLeft происходит ЗДЕСЬ и только здесь для постоянных клиентов
    (source: 'recurring'); для обычных записей списание уже произошло при confirmBook(),
-   поэтому второй раз не списываем. */
+   поэтому второй раз не списываем.
+   ФИКС: добавлена проверка, что тренировка уже началась — отметить посещение для
+   тренировки с будущей датой нельзя. Это страховка от случайных отметок "не той"
+   карточки (например, из-за прежнего бага группировки в renderTC). */
 async function markAttendance(bookingId, status, btn) {
   try {
     const d = await getDB();
@@ -1286,6 +1318,14 @@ async function markAttendance(bookingId, status, btn) {
       const bookSnap = await tx.get(bookRef);
       if (!bookSnap.exists) throw new Error('booking_not_found');
       const booking = bookSnap.data();
+
+      // Не даём отметить посещение для тренировки, которая ещё не наступила.
+      if (booking.trainingDate) {
+        const sessionStart = new Date(booking.trainingDate);
+        if (sessionStart > new Date()) {
+          throw new Error('future_session');
+        }
+      }
 
       const shouldCharge = booking.source === 'recurring' && booking.status === 'upcoming' && booking.phone;
       const userRef = shouldCharge ? d.collection('users').doc(booking.phone) : null;
@@ -1311,7 +1351,11 @@ async function markAttendance(bookingId, status, btn) {
     toast(status === 'attended' ? 'Отмечено: пришла' : 'Отмечено: не пришла');
   } catch (e) {
     console.error(e);
-    toast('Не удалось сохранить отметку');
+    if (e.message === 'future_session') {
+      toast('Эта тренировка ещё не началась — отметить посещение пока нельзя');
+    } else {
+      toast('Не удалось сохранить отметку');
+    }
   }
 }
 
