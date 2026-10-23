@@ -481,7 +481,19 @@ async function handleCb(cb){
   if(data==='my_bookings'){
     try{
       const snap=await db.collection('bookings').where('phone','==',user.phone).get();
-      const bks=snap.docs.map(d=>({id:d.id,...d.data()})).filter(b=>b.status==='upcoming').sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
+      const now=new Date();
+      // ФИКС: раньше здесь показывались ВСЕ записи со статусом 'upcoming', включая те,
+      // чья дата уже прошла, но тренер по какой-то причине не отметил посещение —
+      // такая запись "зависала" и из-за сортировки по возрастанию даты попадала
+      // ПЕРВОЙ в списке как "ближайшая", хотя на самом деле она уже в прошлом
+      // (отсюда и эффект "пишет 13 октября, 14:00, а сегодня 23 октября"). Теперь
+      // показываем только записи с датой "сегодня или позже" — просроченные
+      // неотмеченные записи закрывает тренер в своём кабинете на сайте (раздел
+      // "Не отмечено с прошлых дней").
+      const bks=snap.docs.map(d=>({id:d.id,...d.data()}))
+        .filter(b=>b.status==='upcoming')
+        .filter(b=>!b.trainingDate||new Date(b.trainingDate)>=now)
+        .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
       if(!bks.length){return await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nЗдесь пусто! 🦗\n\nЗапишись на сайте — мы ждём 🤍',{reply_markup:backBtn});}
       let text='📅 <b>Твои ближайшие тренировки</b>\n\n';
       bks.slice(0,5).forEach((b,i)=>{
