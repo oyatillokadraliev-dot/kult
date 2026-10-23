@@ -342,6 +342,20 @@ textarea{resize:vertical;min-height:90px}
           </div>
           <div id="future-mismarked-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
         </div>
+        <div class="card">
+          <div class="card-title">Расхождения времени с расписанием</div>
+          <p class="hint" style="margin-bottom:10px">
+            Находит предстоящие записи (bookings), у которых сохранённое время отличается от
+            времени, указанного сейчас в расписании для этой тренировки — так бывает, если время
+            слота поменяли в админке уже ПОСЛЕ того, как записи были сгенерированы (например, бот
+            присылал напоминание со старым временем, хотя в расписании указано новое).
+            Исправление приводит время записей в соответствие с текущим расписанием.
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-d btn-sm" onclick="syncBookingTimesWithSchedule()">Синхронизировать время записей с расписанием</button>
+          </div>
+          <div id="sync-time-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
+        </div>
       </div>
 
     </main>
@@ -675,12 +689,71 @@ async function saveSlot() {
   const group = document.getElementById('sl-group').value;
   if (!name || !time || !trainer) return toast('Заполните все поля');
   const id = document.getElementById('slot-id').value;
+  const oldSlot = id ? schedCache[id] : null;
   const data = { name, time, trainer, group };
+
   await safe(async () => {
     if (id) await db.collection('schedule').doc(id).set(data);
     else await db.collection('schedule').add(data);
   });
-  await loadSchedule(); closeM('m-slot'); toast('✅ Расписание сохранено');
+
+  // ФИКС: когда редактируем УЖЕ СУЩЕСТВУЮЩИЙ слот и меняем название/время/тренера —
+  // уже сгенерированные ПРЕДСТОЯЩИЕ записи (bookings) сами по себе не обновляются,
+  // это независимые документы-снимки. Раньше это приводило к тому, что, например,
+  // бот присылал клиенту напоминание со старым временем тренировки, хотя в расписании
+  // уже стояло новое. Переносим такие записи на новые значения автоматически.
+  let propagated = 0;
+  if (oldSlot && (oldSlot.name !== name || oldSlot.time !== time || oldSlot.trainer !== trainer)) {
+    try {
+      propagated = await propagateSlotChangeToBookings(oldSlot, { name, time, trainer });
+    } catch (e) {
+      console.error('Не удалось обновить существующие записи после изменения слота:', e);
+    }
+  }
+
+  await loadSchedule();
+  closeM('m-slot');
+  toast(propagated
+    ? `✅ Расписание сохранено, обновлено записей: ${propagated}`
+    : '✅ Расписание сохранено');
+}
+
+/* См. комментарий в saveSlot() выше. Находит все ещё не прошедшие записи (bookings
+   со статусом 'upcoming'), созданные под СТАРЫМИ значениями слота, и переносит их на
+   новые название/время/тренера, сохраняя исходную календарную дату (меняется только
+   время суток, если изменилось время слота).
+   ВАЖНО: это НЕ затрагивает день недели/группу (Пн-Ср-Пт ↔ Вт-Чт-Сб) — если админ
+   поменял именно дни, уже сгенерированные записи останутся на старых днях. Для смены
+   дней нужно отвязать клиента в разделе "Постоянные" и прикрепить заново. */
+async function propagateSlotChangeToBookings(oldSlot, newSlot) {
+  const snap = await db.collection('bookings')
+    .where('trainer', '==', oldSlot.trainer)
+    .where('name', '==', oldSlot.name)
+    .where('time', '==', oldSlot.time)
+    .where('status', '==', 'upcoming')
+    .get();
+
+  if (snap.empty) return 0;
+
+  const newTrainerId = Object.keys(trainersCache).find((k) => trainersCache[k].name === newSlot.trainer) || null;
+  const [newHH, newMM] = (newSlot.time || '00:00').split(':').map(Number);
+
+  const batch = db.batch();
+  let count = 0;
+  snap.docs.forEach((doc) => {
+    const b = doc.data();
+    const update = { name: newSlot.name, time: newSlot.time, trainer: newSlot.trainer };
+    if (newTrainerId) update.trainerKey = newTrainerId;
+    if (b.trainingDate && oldSlot.time !== newSlot.time) {
+      const dt = new Date(b.trainingDate);
+      dt.setHours(newHH, newMM, 0, 0);
+      update.trainingDate = dt.toISOString();
+    }
+    batch.update(doc.ref, update);
+    count++;
+  });
+  await batch.commit();
+  return count;
 }
 async function delSlot() {
   const id = document.getElementById('slot-id').value;
@@ -1191,7 +1264,10 @@ async function unassignRecurring(id) {
       .where('status', '==', 'upcoming')
       .get();
     const batch = db.batch();
-    snap.docs.forEach((d) => batch.update(d.ref, { status: 'cancelled_by_client' }));
+    // trainerNotified: true — чтобы бот не присылал тренеру предупреждение об отмене:
+    // это действие самого админа (отвязка клиента), тренер не должен получать
+    // уведомление "клиент отменил тренировку" по каждой из этих записей.
+    snap.docs.forEach((d) => batch.update(d.ref, { status: 'cancelled_by_client', trainerNotified: true }));
     if (snap.docs.length) await batch.commit();
   } catch (e) { console.error('Не удалось отменить будущие записи после отвязки:', e); }
   await loadRecurring();
@@ -1357,6 +1433,67 @@ async function fixFutureMismarkedBookings() {
     console.error(e);
     out.textContent = 'Ошибка при исправлении: ' + (e.message || '');
     toast('Не удалось исправить записи');
+  }
+}
+
+/* ── ОБСЛУЖИВАНИЕ БАЗЫ: синхронизация времени записей с текущим расписанием ─── */
+/* Каждая запись (booking) — независимый документ-снимок: время и дата фиксируются
+   в момент её создания и сами по себе не меняются, даже если админ потом поменяет
+   время слота в расписании. Для записей, созданных ПОСЛЕ такого редактирования, время
+   теперь переносится автоматически (см. propagateSlotChangeToBookings в saveSlot()),
+   но записи, сгенерированные РАНЬШЕ — до того, как эта защита появилась — могли
+   остаться с устаревшим временем. Эта функция один раз приводит все такие записи
+   в соответствие с текущим расписанием: для каждого слота ищет предстоящие записи
+   с тем же тренером и названием, но ДРУГИМ временем, и исправляет время (и время
+   суток в trainingDate), сохраняя исходную календарную дату. */
+async function syncBookingTimesWithSchedule() {
+  if (!confirm('Обновить время у предстоящих записей, чтобы оно совпадало с текущим расписанием? Это поправит записи, которые были созданы до того, как время тренировки изменили в расписании.')) return;
+  const out = document.getElementById('sync-time-result');
+  out.textContent = 'Сверяем...';
+  try {
+    await loadSchedule(); // актуальный schedCache
+    const slots = Object.values(schedCache);
+    if (!slots.length) {
+      out.textContent = 'Расписание пустое — сверять не с чем.';
+      return;
+    }
+
+    let totalUpdated = 0;
+    const lines = [];
+    for (const s of slots) {
+      const snap = await db.collection('bookings')
+        .where('trainer', '==', s.trainer)
+        .where('name', '==', s.name)
+        .where('status', '==', 'upcoming')
+        .get();
+      const mismatched = snap.docs.filter((doc) => doc.data().time !== s.time);
+      if (!mismatched.length) continue;
+
+      const [hh, mm] = (s.time || '00:00').split(':').map(Number);
+      const batch = db.batch();
+      mismatched.forEach((doc) => {
+        const b = doc.data();
+        const update = { time: s.time };
+        if (b.trainingDate) {
+          const dt = new Date(b.trainingDate);
+          dt.setHours(hh, mm, 0, 0);
+          update.trainingDate = dt.toISOString();
+        }
+        batch.update(doc.ref, update);
+      });
+      await batch.commit();
+      totalUpdated += mismatched.length;
+      lines.push(`• "${s.name}" (${s.trainer}): исправлено записей — ${mismatched.length}, новое время — ${s.time}`);
+    }
+
+    out.textContent = totalUpdated
+      ? `Готово. Обновлено записей: ${totalUpdated}\n\n` + lines.join('\n')
+      : 'Расхождений не найдено — все записи уже совпадают с расписанием.';
+    toast(totalUpdated ? `✅ Обновлено записей: ${totalUpdated}` : 'Расхождений не найдено');
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при синхронизации: ' + (e.message || '');
+    toast('Не удалось синхронизировать');
   }
 }
 
