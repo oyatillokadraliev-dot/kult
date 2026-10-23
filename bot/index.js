@@ -67,9 +67,18 @@ function pluralPeople(n){
   return 'человек';
 }
 
-/* Дни по группе расписания — совпадает с GROUP_DAYS в app.js */
+/* Дни по группе расписания — совпадает с GROUP_DAYS в app.js (сайт) */
 const GROUP_DAY_LABEL={mwf:'Пн, Ср, Пт',tts:'Вт, Чт, Сб'};
 const DAY_ABBR=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+
+function startOfToday(d){
+  const x=new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function endOfToday(d){
+  return new Date(startOfToday(d).getTime()+86400000);
+}
 
 /* Расписание тренера читаем из коллекции schedule (а не из trainer.schedule,
    которого там может не быть — см. структуру в admin.html) */
@@ -93,6 +102,16 @@ async function getTrainerSchedule(trainer){
    списание sessionsLeft происходит за ЛЮБУЮ отметку (attended ИЛИ missed — слот уже
    зарезервирован под абонемент при прикреплении). Никакой "доливки" здесь больше нет:
    прикрепление одноразовое, при новом абонементе админ прикрепляет клиента заново.
+
+   ВАЖНО: каждый booking — это НЕЗАВИСИМЫЙ документ-снимок. Если админ потом меняет
+   время/название/тренера слота в расписании, уже сгенерированные документы САМИ ПО
+   СЕБЕ не обновляются (это и была причина бага "в напоминании 15:00, а в расписании
+   19:00" — время было зафиксировано в момент генерации записи и больше не менялось).
+   Синхронизация уже существующих записей с текущим расписанием делается в
+   admin.html → Настройки → Обслуживание базы → "Синхронизировать время записей
+   с расписанием", а при любом будущем редактировании слота в админке время у ещё не
+   прошедших записей обновляется автоматически (см. propagateSlotChangeToBookings
+   в admin.html).
 */
 
 async function getRecurringForTrainer(trainerName){
@@ -100,22 +119,20 @@ async function getRecurringForTrainer(trainerName){
   return snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.active!==false);
 }
 
-function startOfToday(d){
-  const x=new Date(d);
-  x.setHours(0,0,0,0);
-  return x;
-}
-function endOfToday(d){
-  return new Date(startOfToday(d).getTime()+86400000);
-}
-
 /* Отмечает посещение (разовой ИЛИ постоянной записи — технически одинаковые документы).
-   Списание sessionsLeft происходит ТОЛЬКО для постоянных клиентов (source: 'recurring'),
-   за ЛЮБУЮ отметку (attended ИЛИ missed — слот уже зарезервирован под абонемент при
-   прикреплении), и только один раз. Для обычных записей списание уже произошло
-   в момент записи на сайте. */
+   ФИКС (та же логика, что и в кабинете тренера на сайте, script.js):
+   - это ПЕРЕКЛЮЧАТЕЛЬ: повторное нажатие на уже стоящую отметку снимает её, возвращая
+     статус "upcoming" (на случай ошибки тренера);
+   - переключение между "пришла"/"не пришла" не списывает занятие повторно — оно уже
+     было списано при первой отметке;
+   - нельзя отметить посещение у тренировки, которая ещё не наступила (проверяется
+     только при ПЕРВИЧНОЙ отметке — снятие/переключение статуса всегда разрешено).
+   Списание sessionsLeft — только для постоянных клиентов (source: 'recurring') и
+   только при первичной отметке; возврат — при снятии отметки. Для обычных записей
+   sessionsLeft уже списан в момент записи на сайте, здесь не трогаем. */
 async function markAttendanceWithSessionCharge(bookingId,status){
   const bookRef=db.collection('bookings').doc(bookingId);
+  let resultStatus=status;
   await db.runTransaction(async(tx)=>{
     // ВАЖНО: Firestore требует, чтобы ВСЕ чтения (tx.get) шли раньше ВСЕХ записей
     // (tx.update) — иначе ошибка "transactions require all reads to be executed
@@ -123,20 +140,60 @@ async function markAttendanceWithSessionCharge(bookingId,status){
     const bookSnap=await tx.get(bookRef);
     if(!bookSnap.exists)throw new Error('booking_not_found');
     const booking=bookSnap.data();
+    const prevStatus=booking.status;
 
-    const shouldCharge=booking.source==='recurring'&&booking.status==='upcoming'&&booking.phone;
-    const userRef=shouldCharge?db.collection('users').doc(booking.phone):null;
+    const isUnmarking=prevStatus===status;
+    const newStatus=isUnmarking?'upcoming':status;
+
+    if(!isUnmarking&&prevStatus==='upcoming'&&booking.trainingDate){
+      const sessionStart=new Date(booking.trainingDate);
+      if(sessionStart>new Date())throw new Error('future_session');
+    }
+
+    const isRecurring=booking.source==='recurring'&&!!booking.phone;
+    const userRef=isRecurring?db.collection('users').doc(booking.phone):null;
     const userSnap=userRef?await tx.get(userRef):null;
 
-    tx.update(bookRef,{status});
+    tx.update(bookRef,{status:newStatus});
 
-    if(userSnap&&userSnap.exists){
+    if(isRecurring&&userSnap&&userSnap.exists){
       const currentLeft=userSnap.data().sessionsLeft;
       if(currentLeft!==null&&currentLeft!==undefined){
-        tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
+        if(prevStatus==='upcoming'&&newStatus!=='upcoming'){
+          tx.update(userRef,{sessionsLeft:Math.max(0,currentLeft-1)});
+        }else if(prevStatus!=='upcoming'&&newStatus==='upcoming'){
+          tx.update(userRef,{sessionsLeft:currentLeft+1});
+        }
+        // attended <-> missed: занятие уже было списано один раз, второй раз не трогаем.
       }
     }
+    resultStatus=newStatus;
   });
+  return resultStatus;
+}
+
+/* Уведомляет тренера об отмене клиентом тренировки (и ставит trainerNotified: true,
+   чтобы периодический cron ниже не прислал то же самое уведомление повторно).
+   Работает для отмен, сделанных как через бота, так и через сайт (кнопка "Не смогу
+   прийти" в ЛК клиента) — сайт создаёт тот же статус cancelled_by_client в том же
+   документе, а раз в 15 минут cron ниже подбирает все ещё не отправленные уведомления. */
+async function notifyTrainerOfCancellation(booking,bookingId){
+  try{
+    if(!booking.trainer)return;
+    const tSnap=await db.collection('trainers').where('name','==',booking.trainer).limit(1).get();
+    if(tSnap.empty)return;
+    const trainer=tSnap.docs[0].data();
+    if(!trainer.telegramChatId)return;
+    const dateStr=booking.trainingDate?fmtDate(booking.trainingDate):(booking.days||'');
+    await send(trainer.telegramChatId,
+      `⚠️ <b>Клиент отменил тренировку</b>\n\n👤 ${booking.userName||booking.phone||'—'}\n🏋️‍♀️ ${booking.name}\n📆 ${dateStr}\n\nСтоит иметь это в виду при планировании группы.`
+    );
+    if(bookingId){
+      await db.collection('bookings').doc(bookingId).set({trainerNotified:true},{merge:true});
+    }
+  }catch(e){
+    console.error('Не удалось уведомить тренера об отмене:',e.message);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -189,34 +246,29 @@ async function showTrainerSchedule(chatId,trainer,msgId){
 
   const buttons=schedule.map((s,i)=>[{text:`${s.time} · ${s.name}`,callback_data:`t_slot:${i}`}]);
   buttons.push([{text:'← Главное меню',callback_data:'t_menu'}]);
-  await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nВыбери занятие, чтобы увидеть, кто записан:',{reply_markup:{inline_keyboard:buttons}});
+  await edit(chatId,msgId,'📅 <b>Мои тренировки</b>\n\nВыбери занятие, чтобы увидеть, кто записан сегодня:',{reply_markup:{inline_keyboard:buttons}});
 }
 
-/* Все клиенты слота — и разовые, и постоянные — теперь лежат в bookings одинаково
-   (различаются только полем source). Записи без trainingDate (старый мусор/баг с
-   пустыми днями) сюда никогда не попадут — такие записи тренер не увидит нигде. */
-/* Клиенты слота на его БЛИЖАЙШУЮ предстоящую дату (не "сегодня", не "любую будущую
-   дату вообще"). Тренер должен видеть этот слот в любой день недели (даже если сегодня
-   у слота нет занятия), а клиентов — именно на следующее по времени занятие, а не
-   россыпью по всем сгенерированным датам вперёд у постоянных клиентов. */
+/* ФИКС: раньше здесь бралась "ближайшая общая дата" среди ВСЕХ клиентов слота —
+   если у части клиентов эта дата была отменена, список "съезжал" на следующую дату
+   сразу у всех, и часть клиентов с другой датой пропадала из вида (та же проблема,
+   что чинили в кабинете тренера на сайте). Теперь — как и на сайте — берём РОВНО
+   СЕГОДНЯШНИЙ день: все записи этого слота с trainingDate = сегодня, независимо от
+   статуса (включая отменённые — их тренер должен видеть как предупреждение). */
 async function getSlotClients(trainer,s){
   const snap=await db.collection('bookings')
     .where('trainer','==',trainer.name)
     .where('name','==',s.name)
-    .where('status','==','upcoming')
     .get();
 
   const st=startOfToday(new Date());
+  const en=endOfToday(new Date());
 
-  const upcoming=snap.docs
+  return snap.docs
     .map(d=>({id:d.id,...d.data()}))
     .filter(c=>c.time===s.time)
-    .filter(c=>c.trainingDate&&new Date(c.trainingDate)>=st)
-    .sort((a,b)=>new Date(a.trainingDate||0)-new Date(b.trainingDate||0));
-
-  if(!upcoming.length)return [];
-  const nearestDate=upcoming[0].trainingDate;
-  return upcoming.filter(c=>c.trainingDate===nearestDate);
+    .filter(c=>c.trainingDate&&new Date(c.trainingDate)>=st&&new Date(c.trainingDate)<en)
+    .sort((a,b)=>(a.userName||'').localeCompare(b.userName||'','ru'));
 }
 
 /* Остатки абонемента для клиентов-подписчиков (чтобы показать "абонемент закончился"
@@ -245,23 +297,36 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   const clientsRaw=await getSlotClients(trainer,s);
   const clients=await withSessionsLeft(clientsRaw);
 
-  let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · ${s.days||''}\n\n`;
+  const active=clients.filter(c=>c.status!=='cancelled_by_client');
+  const cancelled=clients.filter(c=>c.status==='cancelled_by_client');
+
+  let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · сегодня\n\n`;
   const rows=[];
 
-  if(!clients.length){
+  if(!active.length&&!cancelled.length){
     text+='👥 Записалось: <b>0 человек</b>\n\nПока никто не записан на это занятие.';
   }else{
-    text+=`👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>\n\nОтметь посещаемость:\n`;
-    clients.forEach((c,i)=>{
-      const dayLabel=c.trainingDate?fmtWeekday(c.trainingDate):'';
-      const isRecurring=c.source==='recurring';
-      const noSessions=isRecurring&&c.sessionsLeft!==null&&c.sessionsLeft!==undefined&&c.sessionsLeft<=0;
-      text+=`\n${i+1}. <b>${c.userName||'—'}</b>${isRecurring?' · <i>постоянный</i>':''}${dayLabel?` · ${dayLabel}`:''}${noSessions?' · <i>абонемент закончился</i>':''}\n   📱 +${c.phone||''}${c.trainingDate?' · '+fmtDateNoTime(c.trainingDate):''}`;
-      rows.push([
-        {text:`✅ ${(c.userName||'—').split(' ')[0]} (${dayLabel||'—'}) пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
-        {text:'❌ Не пришла',callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
-      ]);
-    });
+    text+=`👥 Записалось: <b>${active.length} ${pluralPeople(active.length)}</b>\n`;
+    if(cancelled.length)text+=`⚠️ Отменили сегодня: <b>${cancelled.length}</b>\n`;
+
+    if(active.length){
+      text+='\nОтметь посещаемость:\n';
+      active.forEach((c,i)=>{
+        const isRecurring=c.source==='recurring';
+        const noSessions=isRecurring&&c.sessionsLeft!==null&&c.sessionsLeft!==undefined&&c.sessionsLeft<=0;
+        const mark=c.status==='attended'?' ✅ пришла':c.status==='missed'?' ❌ не пришла':'';
+        text+=`\n${i+1}. <b>${c.userName||'—'}</b>${isRecurring?' · <i>постоянный</i>':''}${noSessions?' · <i>абонемент закончился</i>':''}${mark}\n   📱 +${c.phone||''}`;
+        rows.push([
+          {text:`${c.status==='attended'?'✅':'⬜️'} ${(c.userName||'—').split(' ')[0]} пришла`,callback_data:`t_mark:${c.id}:attended:${slotIndex}`},
+          {text:`${c.status==='missed'?'❌':'⬜️'} не пришла`,callback_data:`t_mark:${c.id}:missed:${slotIndex}`},
+        ]);
+      });
+    }
+
+    if(cancelled.length){
+      text+='\n\n⚠️ <b>Отменили сегодня:</b>';
+      cancelled.forEach(c=>{text+=`\n• ${c.userName||'—'} · +${c.phone||''}`;});
+    }
   }
 
   rows.push([{text:'← К тренировкам',callback_data:'t_schedule'}]);
@@ -390,11 +455,12 @@ async function handleCb(cb){
     if(data.startsWith('t_mark:')){
       const[,bookingId,status,slotIndex]=data.split(':');
       try{
-        await markAttendanceWithSessionCharge(bookingId,status);
-        await answer(cb.id,status==='attended'?'Отмечено: пришла ✅':'Отмечено: не пришла ❌');
+        const resultStatus=await markAttendanceWithSessionCharge(bookingId,status);
+        const msgMap={attended:'Отмечено: пришла ✅',missed:'Отмечено: не пришла ❌',upcoming:'Отметка снята'};
+        await answer(cb.id,msgMap[resultStatus]||'Сохранено');
       }catch(e){
         console.error('Ошибка отметки посещения:',e.message);
-        await answer(cb.id,'Не удалось сохранить отметку',true);
+        await answer(cb.id,e.message==='future_session'?'Эта тренировка ещё не началась':'Не удалось сохранить отметку',true);
       }
       return await showTrainerSlotClients(chatId,user,parseInt(slotIndex,10),msgId);
     }
@@ -448,17 +514,31 @@ async function handleCb(cb){
       return;
     }
 
+    // ФИКС: раньше ЛЮБАЯ запись при отмене тут же удалялась и занятие возвращалось
+    // на счётчик. Для постоянных (source: 'recurring') это ОШИБКА — у них занятие
+    // ещё НЕ списано на этапе бронирования (списание происходит только при отметке
+    // посещения тренером), поэтому "возврат" через эту кнопку фактически начислял
+    // клиенту лишнее занятие. Теперь ветвим: постоянную запись мягко отменяем (как на
+    // сайте — кнопка "Не смогу прийти"), без возврата; обычную — удаляем с возвратом,
+    // как и раньше.
+    const isRecurring=booking.source==='recurring';
+
     try{
-      await db.runTransaction(async(tx)=>{
-        const userRef=db.collection('users').doc(user.phone);
-        const uSnap=await tx.get(userRef);
-        tx.delete(ref);
-        const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
-        if(currentLeft!==null&&currentLeft!==undefined){
-          tx.update(userRef,{sessionsLeft:currentLeft+1});
-        }
-      });
-      await answer(cb.id,'Запись отменена, занятие возвращено ✅');
+      if(isRecurring){
+        await ref.set({status:'cancelled_by_client'},{merge:true});
+      }else{
+        await db.runTransaction(async(tx)=>{
+          const userRef=db.collection('users').doc(user.phone);
+          const uSnap=await tx.get(userRef);
+          tx.delete(ref);
+          const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
+          if(currentLeft!==null&&currentLeft!==undefined){
+            tx.update(userRef,{sessionsLeft:currentLeft+1});
+          }
+        });
+      }
+      await answer(cb.id,isRecurring?'Эта тренировка отменена ✅':'Запись отменена, занятие возвращено ✅');
+      await notifyTrainerOfCancellation(booking,isRecurring?bookingId:null);
     }catch(e){
       console.error('Ошибка отмены записи:',e.message);
       await answer(cb.id,'Не удалось отменить запись',true);
@@ -508,20 +588,29 @@ async function handleCb(cb){
     const ref=db.collection('bookings').doc(bookingId);
     const snap=await ref.get();
     if(!snap.exists)return;
+    const booking=snap.data();
     if(action==='confirm'){
       await ref.set({confirmed:true},{merge:true});
       await edit(chatId,msgId,cb.message.text+'\n\n✅ <b>Подтверждено! Молодец 💪</b>');
     }else{
+      // ФИКС: та же развилка recurring/обычная, что и в "cancel:" выше — постоянным
+      // клиентам занятие не возвращаем (оно ещё не было списано), обычным — возвращаем.
+      const isRecurring=booking.source==='recurring';
       try{
-        await db.runTransaction(async(tx)=>{
-          const userRef=db.collection('users').doc(snap.data().phone);
-          const uSnap=await tx.get(userRef);
-          tx.update(ref,{status:'cancelled_by_client',confirmed:false});
-          const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
-          if(currentLeft!==null&&currentLeft!==undefined){
-            tx.update(userRef,{sessionsLeft:currentLeft+1});
-          }
-        });
+        if(isRecurring){
+          await ref.set({status:'cancelled_by_client',confirmed:false},{merge:true});
+        }else{
+          await db.runTransaction(async(tx)=>{
+            const userRef=db.collection('users').doc(booking.phone);
+            const uSnap=await tx.get(userRef);
+            tx.update(ref,{status:'cancelled_by_client',confirmed:false});
+            const currentLeft=uSnap.exists?uSnap.data().sessionsLeft:null;
+            if(currentLeft!==null&&currentLeft!==undefined){
+              tx.update(userRef,{sessionsLeft:currentLeft+1});
+            }
+          });
+        }
+        await notifyTrainerOfCancellation(booking,bookingId);
       }catch(e){console.error('Ошибка отмены из напоминания:',e.message);}
       await edit(chatId,msgId,cb.message.text+'\n\n❌ <b>Отменила. Бывает 🤷‍♀️</b>');
     }
@@ -615,11 +704,14 @@ cron.schedule('0 8 * * *',async()=>{
 
       for(const s of todaySlots){
         const clients=await getSlotClients(trainer,s);
-        const recurringCount=clients.filter(c=>c.source==='recurring').length;
+        const active=clients.filter(c=>c.status!=='cancelled_by_client');
+        const cancelled=clients.filter(c=>c.status==='cancelled_by_client');
+        const recurringCount=active.filter(c=>c.source==='recurring').length;
         text+=`🏋️‍♀️ <b>${s.time} · ${s.name}</b>\n`;
-        text+=clients.length
-          ?`   👥 Записалось: <b>${clients.length} ${pluralPeople(clients.length)}</b>${recurringCount?` (из них постоянных: ${recurringCount})`:''}\n`
+        text+=active.length
+          ?`   👥 Записалось: <b>${active.length} ${pluralPeople(active.length)}</b>${recurringCount?` (из них постоянных: ${recurringCount})`:''}\n`
           :`   👥 Записалось: <b>0 человек</b>\n`;
+        if(cancelled.length)text+=`   ⚠️ Отменили: <b>${cancelled.length}</b>\n`;
       }
 
       text+='\nХорошего дня и продуктивных тренировок! 💪';
@@ -627,6 +719,27 @@ cron.schedule('0 8 * * *',async()=>{
       await send(trainer.telegramChatId,text,{reply_markup:trainerMenu});
     }
   }catch(e){console.error('[cron] Ошибка утренней сводки тренерам:',e.message);}
+},{timezone:'Europe/Astrakhan'});
+
+/* ═══════════════════════════════════════════════════════════
+   CRON 1c — уведомление тренеру об отменах, сделанных НЕ через бота (каждые 15 минут)
+   ═══════════════════════════════════════════════════════════ */
+/* Клиент может отменить тренировку на САЙТЕ (кнопка "Не смогу прийти" / "Отменить"
+   в личном кабинете) — это напрямую пишет в Firestore, минуя бота, поэтому бот не
+   узнаёт об этом в реальном времени. Этот cron раз в 15 минут подбирает все отменённые
+   записи, которые ещё не были показаны тренеру (trainerNotified не стоит), и шлёт
+   предупреждение. Отмены, сделанные прямо из бота (cancel:/decline:), уже уведомляют
+   тренера сразу и помечаются trainerNotified сами — cron их повторно не трогает. */
+cron.schedule('*/15 * * * *',async()=>{
+  console.log('[cron] Проверяем новые отмены клиентов...');
+  try{
+    const snap=await db.collection('bookings').where('status','==','cancelled_by_client').get();
+    for(const doc of snap.docs){
+      const b=doc.data();
+      if(b.trainerNotified)continue;
+      await notifyTrainerOfCancellation(b,doc.id);
+    }
+  }catch(e){console.error('[cron] Ошибка уведомлений об отменах:',e.message);}
 },{timezone:'Europe/Astrakhan'});
 
 /* ═══════════════════════════════════════════════════════════
