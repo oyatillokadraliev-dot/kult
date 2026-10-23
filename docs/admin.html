@@ -356,6 +356,22 @@ textarea{resize:vertical;min-height:90px}
           </div>
           <div id="sync-time-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
         </div>
+        <div class="card">
+          <div class="card-title">Просроченные неотмеченные записи</div>
+          <p class="hint" style="margin-bottom:10px">
+            Записи со статусом «Предстоит», у которых дата тренировки уже прошла, а тренер так и
+            не отметил посещение (такое могло накопиться, пока в кабинете тренера не было
+            раздела «Не отмечено с прошлых дней» — теперь это обычно удобнее закрыть самому
+            тренеру там же, в его кабинете на сайте). Это аварийный вариант на случай, если
+            тренер не может зайти: массово закрывает такие записи статусом «не пришла» и
+            списывает занятие у постоянных клиентов (как при обычной отметке).
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-g btn-sm" onclick="previewStaleUpcoming()">Найти (только проверка)</button>
+            <button class="btn btn-d btn-sm" onclick="closeStaleUpcomingBookings()">Найти и закрыть</button>
+          </div>
+          <div id="stale-upcoming-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
+        </div>
       </div>
 
     </main>
@@ -1494,6 +1510,78 @@ async function syncBookingTimesWithSchedule() {
     console.error(e);
     out.textContent = 'Ошибка при синхронизации: ' + (e.message || '');
     toast('Не удалось синхронизировать');
+  }
+}
+
+/* ── ОБСЛУЖИВАНИЕ БАЗЫ: просроченные неотмеченные записи ──────────────────── */
+/* Кабинет тренера на сайте показывает "сегодня" ПЛЮС отдельный блок "не отмечено
+   с прошлых дней" (см. script.js renderTC) — это основной способ закрыть такие
+   записи, и тренеру там видно явно, кого отмечать. Эти функции — запасной вариант
+   на случай, если тренер давно не заходил или вообще не пользуется кабинетом. */
+async function findStaleUpcomingBookings() {
+  const snap = await db.collection('bookings').where('status', '==', 'upcoming').get();
+  const now = new Date();
+  return snap.docs.filter((doc) => {
+    const b = doc.data();
+    if (!b.trainingDate) return false;
+    return new Date(b.trainingDate) < now;
+  });
+}
+
+async function previewStaleUpcoming() {
+  const out = document.getElementById('stale-upcoming-result');
+  out.textContent = 'Ищем...';
+  try {
+    const docs = await findStaleUpcomingBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено.';
+      return;
+    }
+    const lines = docs.map((doc) => {
+      const b = doc.data();
+      const dateStr = new Date(b.trainingDate).toLocaleString('ru-RU');
+      return `• ${b.userName || b.phone || '—'} — "${b.name}" ${b.time || ''} (${dateStr}) — тренер: ${b.trainer || '—'}`;
+    });
+    out.textContent = `Найдено записей: ${docs.length}\n\n` + lines.join('\n');
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка при поиске: ' + (e.message || '');
+  }
+}
+
+async function closeStaleUpcomingBookings() {
+  if (!confirm('Закрыть все просроченные неотмеченные записи статусом "не пришла"? Для постоянных клиентов будет списано занятие (как при обычной отметке тренером). Если это не так — лучше попросить тренера отметить их самостоятельно в своём кабинете на сайте, там видно каждую запись отдельно.')) return;
+  const out = document.getElementById('stale-upcoming-result');
+  out.textContent = 'Закрываем...';
+  try {
+    const docs = await findStaleUpcomingBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено, закрывать нечего.';
+      return;
+    }
+
+    let charged = 0;
+    for (const doc of docs) {
+      const b = doc.data();
+      await db.collection('bookings').doc(doc.id).update({ status: 'missed' });
+      if (b.source === 'recurring' && b.phone) {
+        const uRef = db.collection('users').doc(b.phone);
+        const uSnap = await uRef.get();
+        if (uSnap.exists) {
+          const cur = uSnap.data().sessionsLeft;
+          if (cur !== null && cur !== undefined) {
+            await uRef.update({ sessionsLeft: Math.max(0, cur - 1) });
+            charged++;
+          }
+        }
+      }
+    }
+    out.textContent = `Готово. Закрыто записей: ${docs.length}. Списано занятий у постоянных клиентов: ${charged}.`;
+    toast(`✅ Закрыто записей: ${docs.length}`);
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка: ' + (e.message || '');
+    toast('Не удалось закрыть записи');
   }
 }
 
