@@ -177,16 +177,26 @@ async function markAttendanceWithSessionCharge(bookingId,status){
    Работает для отмен, сделанных как через бота, так и через сайт (кнопка "Не смогу
    прийти" в ЛК клиента) — сайт создаёт тот же статус cancelled_by_client в том же
    документе, а раз в 15 минут cron ниже подбирает все ещё не отправленные уведомления. */
+const CANCEL_VIA_LABEL={client_site:'на сайте',client_bot:'в боте',client_bot_reminder:'в боте, из напоминания'};
+
 async function notifyTrainerOfCancellation(booking,bookingId){
   try{
+    // Отвязку клиента делает сам администратор (admin.html, раздел "Постоянные") —
+    // это не решение клиента, предупреждать тренера о ней не нужно (админ и так знает).
+    if(booking.cancelledVia==='admin_unassign')return;
     if(!booking.trainer)return;
     const tSnap=await db.collection('trainers').where('name','==',booking.trainer).limit(1).get();
     if(tSnap.empty)return;
     const trainer=tSnap.docs[0].data();
     if(!trainer.telegramChatId)return;
     const dateStr=booking.trainingDate?fmtDate(booking.trainingDate):(booking.days||'');
+    // Указываем КОГДА и ЧЕРЕЗ ЧТО клиент отменил — чтобы тренер мог при желании
+    // проверить это действие (например, спросить клиента напрямую), а не просто
+    // поверить сообщению бота на слово.
+    const viaLabel=CANCEL_VIA_LABEL[booking.cancelledVia]||'';
+    const whenStr=booking.cancelledAt?fmtDate(booking.cancelledAt):'только что';
     await send(trainer.telegramChatId,
-      `⚠️ <b>Клиент отменил тренировку</b>\n\n👤 ${booking.userName||booking.phone||'—'}\n🏋️‍♀️ ${booking.name}\n📆 ${dateStr}\n\nСтоит иметь это в виду при планировании группы.`
+      `⚠️ <b>Клиент отменил тренировку</b>\n\n👤 ${booking.userName||booking.phone||'—'}\n🏋️‍♀️ ${booking.name}\n📆 Тренировка: ${dateStr}\n🕐 Отменено: ${whenStr}${viaLabel?' ('+viaLabel+')':''}\n\nСтоит иметь это в виду при планировании группы.`
     );
     if(bookingId){
       await db.collection('bookings').doc(bookingId).set({trainerNotified:true},{merge:true});
@@ -298,9 +308,12 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
   const clients=await withSessionsLeft(clientsRaw);
 
   const active=clients.filter(c=>c.status!=='cancelled_by_client');
-  const cancelled=clients.filter(c=>c.status==='cancelled_by_client');
+  // Отвязки, сделанные самим админом (admin_unassign), не показываем как "отмену
+  // клиентом" — это действие администратора, а не решение клиента.
+  const cancelled=clients.filter(c=>c.status==='cancelled_by_client'&&c.cancelledVia!=='admin_unassign');
 
-  let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · сегодня\n\n`;
+  const todayLabel=new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'long',weekday:'long'});
+  let text=`🏋️‍♀️ <b>${s.name}</b>\n⏰ ${s.time} · сегодня, ${todayLabel}\n\n`;
   const rows=[];
 
   if(!active.length&&!cancelled.length){
@@ -325,7 +338,11 @@ async function showTrainerSlotClients(chatId,trainer,slotIndex,msgId){
 
     if(cancelled.length){
       text+='\n\n⚠️ <b>Отменили сегодня:</b>';
-      cancelled.forEach(c=>{text+=`\n• ${c.userName||'—'} · +${c.phone||''}`;});
+      cancelled.forEach(c=>{
+        const viaLabel=CANCEL_VIA_LABEL[c.cancelledVia]||'';
+        const whenStr=c.cancelledAt?fmtDate(c.cancelledAt):'время не зафиксировано';
+        text+=`\n• ${c.userName||'—'} · +${c.phone||''}\n   🕐 ${whenStr}${viaLabel?' ('+viaLabel+')':''}`;
+      });
     }
   }
 
@@ -537,7 +554,7 @@ async function handleCb(cb){
 
     try{
       if(isRecurring){
-        await ref.set({status:'cancelled_by_client'},{merge:true});
+        await ref.set({status:'cancelled_by_client',cancelledAt:new Date().toISOString(),cancelledVia:'client_bot'},{merge:true});
       }else{
         await db.runTransaction(async(tx)=>{
           const userRef=db.collection('users').doc(user.phone);
@@ -610,7 +627,7 @@ async function handleCb(cb){
       const isRecurring=booking.source==='recurring';
       try{
         if(isRecurring){
-          await ref.set({status:'cancelled_by_client',confirmed:false},{merge:true});
+          await ref.set({status:'cancelled_by_client',confirmed:false,cancelledAt:new Date().toISOString(),cancelledVia:'client_bot_reminder'},{merge:true});
         }else{
           await db.runTransaction(async(tx)=>{
             const userRef=db.collection('users').doc(booking.phone);
