@@ -1174,11 +1174,10 @@ async function renderTC() {
     ? (SCHEDULE[todayKey] || []).filter((s) => s.trainer === trainer.name)
     : [];
 
-  // Все записи (любой источник — обычная/постоянная/гость), чья дата — сегодня.
-  // Отменённые клиентом записи не показываем, остальные статусы показываем как есть,
-  // чтобы отметка "пришла/не пришла" сохранялась видимой после перезагрузки.
+  // Все записи (любой источник — обычная/постоянная/гость), чья дата — сегодня,
+  // ВКЛЮЧАЯ отменённые клиентом — их тренер должен видеть как предупреждение
+  // "не придёт сегодня", а не терять из виду молча.
   const todaysBookings = allRaw.filter((b) => {
-    if (b.status === 'cancelled_by_client') return false;
     if (!b.trainingDate) return false;
     const dt = new Date(b.trainingDate);
     return dt >= startToday && dt < endToday;
@@ -1212,7 +1211,10 @@ async function renderTC() {
   if (recPhones.length) await ensureClientLookup(recPhones);
 
   list.innerHTML = items.length
-    ? items.map((s, i) => `
+    ? items.map((s, i) => {
+      const activeClients = s.clients.filter((c) => c.status !== 'cancelled_by_client');
+      const cancelledClients = s.clients.filter((c) => c.status === 'cancelled_by_client');
+      return `
       <div class="tc-group">
         <div class="tc-group-header" onclick="toggleTC(${i})">
           <span class="tc-group-time">${esc(s.time)}</span>
@@ -1220,10 +1222,10 @@ async function renderTC() {
             <div class="tc-group-name">${esc(s.name)}</div>
             <div class="tc-group-days">${esc(s.daysLabel || '')}</div>
           </div>
-          <span class="tc-group-count">${s.clients.length} ${s.clients.length===1?'клиент':'клиентов'}</span>
+          <span class="tc-group-count">${activeClients.length} ${activeClients.length===1?'клиент':'клиентов'}${cancelledClients.length ? ` <span style="color:var(--red,#dc2626)">· ⚠️ ${cancelledClients.length} отмен.</span>` : ''}</span>
         </div>
         <div class="tc-clients-list" id="tc-cl-${i}">
-          ${s.clients.length ? s.clients.map((c) => {
+          ${activeClients.length ? activeClients.map((c) => {
             const isRecurring = c.source === 'recurring';
             const noSessionsLeft = (() => {
               if (!isRecurring) return false;
@@ -1250,9 +1252,17 @@ async function renderTC() {
               </div>
             </div>`;
           }).join('') : '<div class="lk-empty-state" style="padding:14px">На это занятие пока никто не записан</div>'}
+          ${cancelledClients.length ? `
+          <div style="margin:10px 14px 0;padding:10px 14px;background:rgba(220,38,38,.06);border-radius:8px">
+            <div style="font-size:12px;font-weight:600;color:var(--red,#dc2626);margin-bottom:6px">⚠️ Отменили сегодня:</div>
+            ${cancelledClients.map((c) => `
+              <div style="font-size:13px;color:var(--ink-muted,#78716C);padding:3px 0">${esc(c.userName || '—')} · +${esc(c.phone || '')}</div>
+            `).join('')}
+          </div>` : ''}
         </div>
         <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.daysLabel)})">+ Гость (разовый визит без записи)</button>
-      </div>`).join('')
+      </div>`;
+    }).join('')
     : '<div class="lk-empty-state">Сегодня в расписании нет ваших тренировок</div>';
 }
 function toggleTC(i) {
