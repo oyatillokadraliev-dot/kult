@@ -295,10 +295,17 @@ async function dbGetRecurringForTrainer(trainerName) {
 
 /* Отмена ОДНОЙ даты постоянной тренировки клиентом из личного кабинета.
    В отличие от cancelBook() для обычной записи — НЕ возвращает занятие на sessionsLeft,
-   потому что оно ещё не было списано (списание происходит только по факту отметки тренером). */
+   потому что оно ещё не было списано (списание происходит только по факту отметки тренером).
+   ВАЖНО: пишем cancelledAt (когда) и cancelledVia (откуда) — это не влияет на логику,
+   но даёт возможность проверить происхождение отмены (увидеть точное время и канал
+   в кабинете тренера), а не просто доверять статусу "cancelled_by_client" на слово. */
 async function dbCancelRecurringBooking(bookingId) {
   const d = await getDB();
-  await d.collection('bookings').doc(bookingId).set({ status: 'cancelled_by_client' }, { merge: true });
+  await d.collection('bookings').doc(bookingId).set({
+    status: 'cancelled_by_client',
+    cancelledAt: new Date().toISOString(),
+    cancelledVia: 'client_site',
+  }, { merge: true });
 }
 
 /* ── INIT ────────────────────────────────────────── */
@@ -682,6 +689,16 @@ function fmtWeekday(iso) {
   const d = new Date(iso);
   const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
   return days[d.getDay()];
+}
+/* "22 окт, 14:32" — для аудита: показывает точный момент, когда произошло событие
+   (например, отмена клиентом), чтобы это можно было проверить, а не просто поверить
+   статусу на слово. */
+function fmtDateTimeShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${formatDateShort(iso)}, ${hh}:${mm}`;
 }
 
 /* ── BOOKING ─────────────────────────────────────── */
@@ -1270,10 +1287,19 @@ async function renderTC() {
       </div>
     </div>` : '';
 
-  list.innerHTML = staleHtml + (items.length
+  // Явная дата сверху — без этого непонятно, на какой именно день смотрит тренер
+  // (список и так всегда "сегодня", но само слово "сегодня" ничего не подтверждает).
+  const todayLabel = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+  const dateHeaderHtml = `<div style="padding:4px 2px 14px;font-size:13px;color:var(--ink-muted,#78716C)">Сегодня, ${esc(todayLabel)}</div>`;
+
+  list.innerHTML = dateHeaderHtml + staleHtml + (items.length
     ? items.map((s, i) => {
+      // cancelledVia === 'admin_unassign' — это не отмена клиентом, а то, что админ
+      // сам отвязал клиента в разделе "Постоянные" (admin.html). Показывать это как
+      // "клиент отменил, ⚠️" было бы вводящим в заблуждение — админ и так знает,
+      // что сделал это сам, предупреждать тренера не нужно.
       const activeClients = s.clients.filter((c) => c.status !== 'cancelled_by_client');
-      const cancelledClients = s.clients.filter((c) => c.status === 'cancelled_by_client');
+      const cancelledClients = s.clients.filter((c) => c.status === 'cancelled_by_client' && c.cancelledVia !== 'admin_unassign');
       return `
       <div class="tc-group">
         <div class="tc-group-header" onclick="toggleTC(${i})">
@@ -1315,9 +1341,16 @@ async function renderTC() {
           ${cancelledClients.length ? `
           <div style="margin:10px 14px 0;padding:10px 14px;background:rgba(220,38,38,.06);border-radius:8px">
             <div style="font-size:12px;font-weight:600;color:var(--red,#dc2626);margin-bottom:6px">⚠️ Отменили сегодня:</div>
-            ${cancelledClients.map((c) => `
-              <div style="font-size:13px;color:var(--ink-muted,#78716C);padding:3px 0">${esc(c.userName || '—')} · +${esc(c.phone || '')}</div>
-            `).join('')}
+            ${cancelledClients.map((c) => {
+              const viaLabel = { client_site: 'на сайте', client_bot: 'в боте', client_bot_reminder: 'в боте, из напоминания' }[c.cancelledVia] || '';
+              // Если cancelledAt не записан (старая запись, отменённая до этого фикса) —
+              // честно показываем "время отмены не зафиксировано", а не скрываем молча.
+              const whenText = c.cancelledAt
+                ? `отменила ${esc(fmtDateTimeShort(c.cancelledAt))}${viaLabel ? ' · ' + viaLabel : ''}`
+                : 'время отмены не зафиксировано (отменено до обновления)';
+              return `
+              <div style="font-size:13px;color:var(--ink-muted,#78716C);padding:3px 0">${esc(c.userName || '—')} · +${esc(c.phone || '')} · ${whenText}</div>`;
+            }).join('')}
           </div>` : ''}
         </div>
         <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.daysLabel)})">+ Гость (разовый визит без записи)</button>
