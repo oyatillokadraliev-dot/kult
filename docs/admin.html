@@ -1283,7 +1283,15 @@ async function unassignRecurring(id) {
     // trainerNotified: true — чтобы бот не присылал тренеру предупреждение об отмене:
     // это действие самого админа (отвязка клиента), тренер не должен получать
     // уведомление "клиент отменил тренировку" по каждой из этих записей.
-    snap.docs.forEach((d) => batch.update(d.ref, { status: 'cancelled_by_client', trainerNotified: true }));
+    // cancelledVia: 'admin_unassign' — по этой метке и кабинет тренера на сайте,
+    // и бот отличают "клиент сам отменил" от "админ отвязал" и не показывают это
+    // как предупреждение об отмене клиентом.
+    snap.docs.forEach((d) => batch.update(d.ref, {
+      status: 'cancelled_by_client',
+      trainerNotified: true,
+      cancelledVia: 'admin_unassign',
+      cancelledAt: new Date().toISOString(),
+    }));
     if (snap.docs.length) await batch.commit();
   } catch (e) { console.error('Не удалось отменить будущие записи после отвязки:', e); }
   await loadRecurring();
