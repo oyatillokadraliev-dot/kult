@@ -999,10 +999,17 @@ if (hasAb) {
     ? sorted.map((b) => {
         const status = b.status || 'upcoming';
         const isRecurring = b.source === 'recurring';
+        // Запись могла остаться в статусе "upcoming" с уже прошедшей датой, если
+        // тренер по какой-то причине не отметил посещение (например, до того как
+        // в кабинете тренера появилась возможность отмечать прошедшие дни). Такую
+        // запись НЕЛЬЗЯ подписывать "Предстоит" — это вводит в заблуждение (как
+        // будто тренировка ещё впереди, хотя она уже прошла много дней назад).
+        const isStaleUpcoming = status === 'upcoming' && b.trainingDate && new Date(b.trainingDate) < new Date();
         const badge  =
           status === 'attended' ? '<span class="lk-status-badge lk-status-attended">Посещено</span>' :
           status === 'missed'   ? '<span class="lk-status-badge lk-status-missed">Пропуск</span>'   :
           status === 'cancelled_by_client' ? '<span class="lk-status-badge lk-status-missed">Отменено</span>' :
+          isStaleUpcoming ? '<span class="lk-status-badge lk-status-missed">⏳ Не отмечено тренером</span>' :
           '<span class="lk-status-badge lk-status-upcoming">Предстоит</span>';
         const label = Object.values(TRAININGS).find((x) => x.name === b.name)?.name || b.name;
         return `
@@ -1019,7 +1026,7 @@ if (hasAb) {
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             ${badge}
-            ${status === 'upcoming'
+            ${status === 'upcoming' && !isStaleUpcoming
               ? (isRecurring
                   ? `<button class="lk-cancel-btn" onclick="cancelRecurringOccurrence('${esc(b.id)}')">Не смогу прийти</button>`
                   : `<button class="lk-cancel-btn" onclick="cancelBook('${esc(b.id)}')">Отменить</button>`)
@@ -1205,12 +1212,65 @@ async function renderTC() {
 
   const items = Object.values(groups).sort((a, b) => String(a.time).localeCompare(String(b.time)));
 
+  // ФИКС: кабинет тренера теперь показывает только "сегодня" — это решило путаницу
+  // с датами, но создало побочный эффект: если тренер в какой-то день НЕ отметил
+  // посещение (например, был день, когда в кабинете ещё был старый баг, или просто
+  // забыл), эта запись осталась в статусе "upcoming" с уже прошедшей датой — и больше
+  // НИКОГДА не попадёт в список "сегодня", то есть отметить её было бы просто негде.
+  // Именно такие "зависшие" записи потом удивляли клиентов в личном кабинете и боте
+  // ("14:00, 13 октября, Ожидает" — хотя дата давно прошла). Этот блок находит все
+  // такие просроченные неотмеченные записи этого тренера (любая дата в прошлом,
+  // статус всё ещё "upcoming") и даёт тренеру отметить их задним числом.
+  const staleBookings = allRaw
+    .filter((b) => b.status === 'upcoming' && b.trainingDate && new Date(b.trainingDate) < startToday)
+    .sort((a, b) => new Date(a.trainingDate) - new Date(b.trainingDate));
+
   const recPhones = [...new Set(
-    items.flatMap((g) => g.clients).filter((c) => c.source === 'recurring').map((c) => c.phone).filter(Boolean)
+    [...items.flatMap((g) => g.clients), ...staleBookings]
+      .filter((c) => c.source === 'recurring').map((c) => c.phone).filter(Boolean)
   )];
   if (recPhones.length) await ensureClientLookup(recPhones);
 
-  list.innerHTML = items.length
+  const staleHtml = staleBookings.length ? `
+    <div class="tc-group" style="border:1.5px solid rgba(220,38,38,.35)">
+      <div class="tc-group-header" onclick="toggleTC('stale')">
+        <span class="tc-group-time">⏳</span>
+        <div>
+          <div class="tc-group-name" style="color:var(--red,#dc2626)">Не отмечено с прошлых дней</div>
+          <div class="tc-group-days">Пожалуйста, отметьте посещаемость — иначе клиент будет видеть эту запись как "предстоящую"</div>
+        </div>
+        <span class="tc-group-count" style="color:var(--red,#dc2626)">${staleBookings.length}</span>
+      </div>
+      <div class="tc-clients-list" id="tc-cl-stale">
+        ${staleBookings.map((c) => {
+          const isRecurring = c.source === 'recurring';
+          const noSessionsLeft = (() => {
+            if (!isRecurring) return false;
+            const u = clientLookupCache[c.phone];
+            return u && u.sessionsLeft !== null && u.sessionsLeft !== undefined && u.sessionsLeft <= 0;
+          })();
+          return `
+          <div class="tc-client-row-full" data-booking-id="${esc(c.id)}">
+            <div class="tc-client-info">
+              <div class="tc-client-name">${esc(c.userName || '—')}${isRecurring ? ' <span style="font-size:11px;color:var(--gold,#C9A96E);font-weight:600">· ПОСТОЯННЫЙ</span>' : ''}</div>
+              <div class="tc-client-meta">${esc(c.name || '')} · ${esc(c.time || '')} · ${esc(formatDateShort(c.trainingDate))}${noSessionsLeft ? ' · <span style="color:var(--red,#dc2626)">абонемент закончился</span>' : ''}</div>
+            </div>
+            <div class="tc-attend-buttons">
+              <button class="tc-attend-btn tc-attend-yes" onclick="markAttendance('${esc(c.id)}','attended',this)" title="Пришла">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button class="tc-attend-btn tc-attend-no" onclick="markAttendance('${esc(c.id)}','missed',this)" title="Не пришла">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  list.innerHTML = staleHtml + (items.length
     ? items.map((s, i) => {
       const activeClients = s.clients.filter((c) => c.status !== 'cancelled_by_client');
       const cancelledClients = s.clients.filter((c) => c.status === 'cancelled_by_client');
@@ -1263,7 +1323,7 @@ async function renderTC() {
         <button class="btn-outline tc-guest-btn" style="margin:10px 14px 14px" onclick="openGuestModal(${jsArg(s.name)}, ${jsArg(trainer.name)}, ${jsArg(s.time)}, ${jsArg(s.daysLabel)})">+ Гость (разовый визит без записи)</button>
       </div>`;
     }).join('')
-    : '<div class="lk-empty-state">Сегодня в расписании нет ваших тренировок</div>';
+    : (staleBookings.length ? '' : '<div class="lk-empty-state">Сегодня в расписании нет ваших тренировок</div>'));
 }
 function toggleTC(i) {
   document.getElementById('tc-cl-' + i)?.classList.toggle('open');
@@ -1345,12 +1405,13 @@ async function markAttendance(bookingId, status, btn) {
       resultStatus = newStatus;
     });
 
-    const row = btn.closest('.tc-client-row-full');
-    row.querySelectorAll('.tc-attend-btn').forEach((b) => b.classList.remove('active'));
-    if (resultStatus !== 'upcoming') btn.classList.add('active');
-
     const msgMap = { attended: 'Отмечено: пришла', missed: 'Отмечено: не пришла', upcoming: 'Отметка снята' };
     toast(msgMap[resultStatus] || 'Сохранено');
+    // Перерисовываем кабинет целиком: так запись сразу пропадает из "не отмечено
+    // с прошлых дней" и все счётчики/группы остаются в актуальном состоянии —
+    // вместо точечного патча одной кнопки в DOM, который раньше мог разойтись
+    // с реальным списком при наличии блока просроченных записей.
+    await renderTC();
   } catch (e) {
     console.error(e);
     if (e.message === 'future_session') {
