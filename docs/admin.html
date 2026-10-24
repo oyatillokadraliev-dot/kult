@@ -1664,9 +1664,19 @@ async function closeStaleUpcomingBookings() {
 async function findOrphanedScheduleBookings() {
   await loadSchedule(); // актуальный schedCache
   const validCombos = new Set(Object.values(schedCache).map((s) => `${s.trainer}|${s.name}`));
-  const snap = await db.collection('bookings').where('status', '==', 'upcoming').get();
+  const now = new Date();
+  const snap = await db.collection('bookings').get();
   return snap.docs.filter((doc) => {
     const b = doc.data();
+    // Берём 'upcoming' И уже отменённые ('cancelled_by_client') — у отменённых
+    // статус сам по себе уже в порядке, но связанное прикрепление
+    // (recurringAssignments) могло остаться активным и его тоже нужно отвязать.
+    // Прошедшие (attended/missed) не трогаем — это законная история посещений.
+    if (b.status !== 'upcoming' && b.status !== 'cancelled_by_client') return false;
+    // Не трогаем совсем старые записи без даты или далеко в прошлом — чтобы не
+    // ворошить историю, только то, что ещё актуально (сегодня или позже), либо
+    // вообще без даты (технически не должно быть, но на всякий случай пропустим).
+    if (b.trainingDate && new Date(b.trainingDate) < now && b.status !== 'cancelled_by_client') return false;
     return !validCombos.has(`${b.trainer}|${b.name}`);
   });
 }
@@ -1707,12 +1717,21 @@ async function cleanupOrphanedBookings() {
     const batch = db.batch();
     docs.forEach((doc) => {
       const b = doc.data();
-      batch.update(doc.ref, {
-        status: 'cancelled_by_client',
-        cancelledVia: 'admin_unassign',
-        cancelledAt: new Date().toISOString(),
-        trainerNotified: true,
-      });
+      // Если запись уже была отменена клиентом раньше — НЕ перезаписываем её
+      // cancelledVia/cancelledAt (это исказило бы честный аудит "кто и когда
+      // отменил"), просто убеждаемся, что trainerNotified стоит (чтобы cron
+      // в боте не прислал по ней лишнее уведомление). Если же запись ещё была
+      // "upcoming" — отменяем её сейчас этим действием админа.
+      if (b.status === 'cancelled_by_client') {
+        batch.update(doc.ref, { trainerNotified: true });
+      } else {
+        batch.update(doc.ref, {
+          status: 'cancelled_by_client',
+          cancelledVia: 'admin_unassign',
+          cancelledAt: new Date().toISOString(),
+          trainerNotified: true,
+        });
+      }
       if (b.recurringId) recurringIds.add(b.recurringId);
     });
     await batch.commit();
