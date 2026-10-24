@@ -372,6 +372,22 @@ textarea{resize:vertical;min-height:90px}
           </div>
           <div id="stale-upcoming-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
         </div>
+        <div class="card">
+          <div class="card-title">Записи вне текущего расписания</div>
+          <p class="hint" style="margin-bottom:10px">
+            Находит предстоящие записи, у которых сочетание "тренер + название тренировки" не
+            совпадает ни с одним слотом в текущем расписании — это случается, когда слот
+            удалили или переименовали в админке, а постоянного клиента, прикреплённого к нему,
+            никто не отвязал (его уже сгенерированные тренировки остаются висеть под старым
+            названием и могут путать тренера, например, показывая несуществующую дисциплину).
+            Исправление отменяет такие записи и отвязывает соответствующие прикрепления.
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-g btn-sm" onclick="previewOrphanedBookings()">Найти (только проверка)</button>
+            <button class="btn btn-d btn-sm" onclick="cleanupOrphanedBookings()">Найти и очистить</button>
+          </div>
+          <div id="orphaned-result" class="hint" style="margin-top:10px;white-space:pre-wrap"></div>
+        </div>
       </div>
 
     </main>
@@ -771,11 +787,55 @@ async function propagateSlotChangeToBookings(oldSlot, newSlot) {
   await batch.commit();
   return count;
 }
+/* ФИКС: раньше удаление слота никак не затрагивало постоянных клиентов, прикреплённых
+   к нему (recurringAssignments) — их уже сгенерированные будущие тренировки оставались
+   висеть под старым названием/тренером, которого больше нет в расписании. В кабинете
+   тренера такая запись попадала в "запасную" группировку (для записей вне текущего
+   расписания) и выглядела как тренировка, которой на самом деле не существует (например,
+   "Пилатес" у тренера, который давно ведёт другую дисциплину). Теперь при удалении слота
+   находим прикреплённых клиентов, предупреждаем о них явно и автоматически отвязываем. */
 async function delSlot() {
   const id = document.getElementById('slot-id').value;
-  if (!id || !confirm('Удалить этот слот?')) return;
-  await safe(() => db.collection('schedule').doc(id).delete(), 'Не удалось удалить');
-  await loadSchedule(); closeM('m-slot'); toast('Слот удалён');
+  if (!id) return;
+
+  let affected = [];
+  try {
+    const snap = await db.collection('recurringAssignments').where('slotId', '==', id).get();
+    affected = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((r) => r.active !== false);
+  } catch (e) { console.error(e); }
+
+  const names = affected.map((r) => r.userName || r.phone).filter(Boolean).join(', ');
+  const msg = affected.length
+    ? `К этому слоту прикреплены постоянные клиенты: ${names}.\n\nУдалить слот и автоматически отвязать их? Их ещё не прошедшие тренировки по этому слоту будут отменены.`
+    : 'Удалить этот слот?';
+  if (!confirm(msg)) return;
+
+  try {
+    for (const r of affected) {
+      await db.collection('recurringAssignments').doc(r.id).update({ active: false });
+      const bSnap = await db.collection('bookings')
+        .where('recurringId', '==', r.id)
+        .where('status', '==', 'upcoming')
+        .get();
+      const batch = db.batch();
+      bSnap.docs.forEach((d) => batch.update(d.ref, {
+        status: 'cancelled_by_client',
+        cancelledVia: 'admin_unassign',
+        cancelledAt: new Date().toISOString(),
+        trainerNotified: true,
+      }));
+      if (bSnap.docs.length) await batch.commit();
+    }
+    await db.collection('schedule').doc(id).delete();
+  } catch (e) {
+    console.error(e);
+    toast('Не удалось удалить: ' + (e.message || ''));
+    return;
+  }
+
+  await loadSchedule();
+  closeM('m-slot');
+  toast(affected.length ? `Слот удалён, отвязано клиентов: ${affected.length}` : 'Слот удалён');
 }
 
 /* ── TRAINERS ────────────────────────────────────── */
@@ -1590,6 +1650,83 @@ async function closeStaleUpcomingBookings() {
     console.error(e);
     out.textContent = 'Ошибка: ' + (e.message || '');
     toast('Не удалось закрыть записи');
+  }
+}
+
+/* ── ОБСЛУЖИВАНИЕ БАЗЫ: записи вне текущего расписания ─────────────────────── */
+/* Если слот расписания удалить (или раньше, до фикса в delSlot(), просто заменить
+   его другим — например, "Пилатес" превратился в "TRX+CrossFit"), уже сгенерированные
+   будущие записи постоянных клиентов, привязанных к старому слоту, никуда не деваются:
+   они остаются обычными документами в bookings с трейнером/названием, которых больше
+   нет ни в одном текущем слоте schedule. В кабинете тренера такая запись попадает в
+   "запасную" группировку и выглядит как существующая тренировка, хотя её давно нет
+   в расписании. Эти функции находят и чистят такие "осиротевшие" записи. */
+async function findOrphanedScheduleBookings() {
+  await loadSchedule(); // актуальный schedCache
+  const validCombos = new Set(Object.values(schedCache).map((s) => `${s.trainer}|${s.name}`));
+  const snap = await db.collection('bookings').where('status', '==', 'upcoming').get();
+  return snap.docs.filter((doc) => {
+    const b = doc.data();
+    return !validCombos.has(`${b.trainer}|${b.name}`);
+  });
+}
+
+async function previewOrphanedBookings() {
+  const out = document.getElementById('orphaned-result');
+  out.textContent = 'Ищем...';
+  try {
+    const docs = await findOrphanedScheduleBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено.';
+      return;
+    }
+    const lines = docs.map((doc) => {
+      const b = doc.data();
+      const dateStr = b.trainingDate ? new Date(b.trainingDate).toLocaleString('ru-RU') : '—';
+      return `• ${b.userName || b.phone || '—'} — "${b.name}" (${b.trainer || '—'}) ${b.time || ''} (${dateStr})`;
+    });
+    out.textContent = `Найдено записей вне текущего расписания: ${docs.length}\n\n` + lines.join('\n');
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка: ' + (e.message || '');
+  }
+}
+
+async function cleanupOrphanedBookings() {
+  if (!confirm('Отменить все записи, которые ссылаются на тренировку/тренера, которых больше нет в текущем расписании (слот был удалён или переименован)? Если за ними стояли постоянные клиенты — их прикрепление тоже будет отвязано (active: false).')) return;
+  const out = document.getElementById('orphaned-result');
+  out.textContent = 'Чистим...';
+  try {
+    const docs = await findOrphanedScheduleBookings();
+    if (!docs.length) {
+      out.textContent = 'Таких записей не найдено, чистить нечего.';
+      return;
+    }
+
+    const recurringIds = new Set();
+    const batch = db.batch();
+    docs.forEach((doc) => {
+      const b = doc.data();
+      batch.update(doc.ref, {
+        status: 'cancelled_by_client',
+        cancelledVia: 'admin_unassign',
+        cancelledAt: new Date().toISOString(),
+        trainerNotified: true,
+      });
+      if (b.recurringId) recurringIds.add(b.recurringId);
+    });
+    await batch.commit();
+
+    for (const rid of recurringIds) {
+      await db.collection('recurringAssignments').doc(rid).update({ active: false }).catch(() => {});
+    }
+
+    out.textContent = `Готово. Отменено записей: ${docs.length}. Отвязано прикреплений: ${recurringIds.size}.`;
+    toast(`✅ Очищено: ${docs.length}`);
+  } catch (e) {
+    console.error(e);
+    out.textContent = 'Ошибка: ' + (e.message || '');
+    toast('Не удалось очистить');
   }
 }
 
